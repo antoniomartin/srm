@@ -1,0 +1,6 @@
+{
+  "name": "SRM Profesional",
+  "description": "Sistema de Gestión de Relaciones con Proveedores (SRM) con sincronización en la nube, mapas interactivos, exportación a Excel/PDF, calendario de tareas y análisis inteligente por IA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
