@@ -27,6 +27,9 @@ export const PinLocationMapModal: React.FC<PinLocationMapModalProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState('');
 
+  const initTimeoutRef = useRef<any>(null);
+  const invalidateTimeoutRef = useRef<any>(null);
+
   // 1. Dynamically Load Leaflet Assets
   useEffect(() => {
     if ((window as any).L) {
@@ -103,8 +106,11 @@ export const PinLocationMapModal: React.FC<PinLocationMapModalProps> = ({
 
       setCurrentCoords({ lat: initialLat, lon: initialLon });
 
-      // Create Leaflet Map instance
-      if (!mapRef.current) {
+      // Create Leaflet Map instance after a slight timeout so the DOM element has finished layout and has computed height
+      initTimeoutRef.current = setTimeout(() => {
+        if (!mapContainerRef.current) return;
+        if (mapRef.current) return; // Prevent double creation
+
         mapRef.current = L.map(mapContainerRef.current).setView([initialLat, initialLon], initialZoom);
         
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -143,12 +149,21 @@ export const PinLocationMapModal: React.FC<PinLocationMapModalProps> = ({
           markerRef.current.setLatLng([lat, lng]);
           setCurrentCoords({ lat, lon: lng });
         });
-      }
+
+        // Invalidate map size once more shortly after to ensure rendering is seamless
+        invalidateTimeoutRef.current = setTimeout(() => {
+          if (mapRef.current) {
+            mapRef.current.invalidateSize();
+          }
+        }, 150);
+      }, 150);
     };
 
     initializeMap();
 
     return () => {
+      if (initTimeoutRef.current) clearTimeout(initTimeoutRef.current);
+      if (invalidateTimeoutRef.current) clearTimeout(invalidateTimeoutRef.current);
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -260,7 +275,7 @@ export const PinLocationMapModal: React.FC<PinLocationMapModalProps> = ({
               <span className="text-xs font-semibold">Cargando mapa interactivo...</span>
             </div>
           )}
-          <div ref={mapContainerRef} className="w-full h-full z-0" />
+          <div ref={mapContainerRef} className="w-full h-[380px] z-0" />
         </div>
 
         {/* Bottom Coordinates Display and Action Buttons */}
