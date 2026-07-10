@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Building2, Tag, Users, CheckCircle2, AlertCircle, XCircle } from 'lucide-react';
+import { Building2, Tag, Users, CheckCircle2, AlertCircle, XCircle, Clock, ShieldAlert } from 'lucide-react';
 import { Empresa } from '../types';
 
 interface CompanyCardProps {
@@ -39,21 +39,40 @@ export const CompanyCard: React.FC<CompanyCardProps> = ({
 
   const getEstadoBadge = () => {
     switch (empresa.estado) {
+      case 'homologado':
       case 'validado':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-            <CheckCircle2 className="w-3.5 h-3.5" /> Validado
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-sm">
+            <CheckCircle2 className="w-3.5 h-3.5" /> Homologado
+          </span>
+        );
+      case 'en_proceso':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-sm">
+            <Clock className="w-3.5 h-3.5 animate-spin-slow" /> En proceso
+          </span>
+        );
+      case 'en_cuarentena':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 shadow-sm">
+            <ShieldAlert className="w-3.5 h-3.5" /> En cuarentena
+          </span>
+        );
+      case 'no_apto':
+        return (
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200 shadow-sm">
+            <XCircle className="w-3.5 h-3.5" /> No apto
           </span>
         );
       case 'inactivo':
         return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-50 text-slate-600 border border-slate-200 shadow-sm">
             <XCircle className="w-3.5 h-3.5" /> Inactivo
           </span>
         );
       default:
         return (
-          <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 shadow-sm">
             <AlertCircle className="w-3.5 h-3.5" /> Prospecto
           </span>
         );

@@ -262,7 +262,7 @@ export default function App() {
 
   const inactiveCompanies = useMemo(() => {
     return empresas
-      .filter(e => e.estado === 'validado' && scores[e.id!]?.nivel === 'rojo')
+      .filter(e => (e.estado === 'homologado' || e.estado === 'validado') && scores[e.id!]?.nivel === 'rojo')
       .map(e => ({ emp: e, dias: scores[e.id!]?.dias }));
   }, [empresas, scores]);
 
@@ -1317,14 +1317,17 @@ export default function App() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Estado</label>
+                  <label className="block text-xs font-bold text-slate-500 uppercase">Estado de Homologación</label>
                   <select 
                     value={newCompany.estado}
                     onChange={(e) => setNewCompany({...newCompany, estado: e.target.value as any})}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
+                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
                   >
                     <option value="prospecto">🔵 Prospecto</option>
-                    <option value="validado">✅ Validado</option>
+                    <option value="en_proceso">⏳ En proceso</option>
+                    <option value="homologado">✅ Homologado</option>
+                    <option value="en_cuarentena">⚠️ En cuarentena</option>
+                    <option value="no_apto">🚫 No apto</option>
                     <option value="inactivo">⚫ Inactivo</option>
                   </select>
                 </div>

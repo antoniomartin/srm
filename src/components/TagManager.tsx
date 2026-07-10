@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Tag, Pencil, Trash2, Check, X, ChevronDown, ChevronUp, Search, Building2, HelpCircle } from 'lucide-react';
+import { Tag, Pencil, Trash2, AlertCircle, Check, X, ChevronDown, ChevronUp, Search, Building2, HelpCircle } from 'lucide-react';
 import { Empresa } from '../types';
 
 interface TagManagerProps {
@@ -18,6 +18,42 @@ export const TagManager: React.FC<TagManagerProps> = ({
   const [newTagName, setNewTagName] = useState('');
   const [expandedTag, setExpandedTag] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [customConfirm, setCustomConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    isDestructive?: boolean;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const askConfirmation = (
+    title: string,
+    message: string,
+    onConfirm: () => void | Promise<void>,
+    isDestructive: boolean = true,
+    confirmLabel: string = "Eliminar",
+    cancelLabel: string = "Cancelar"
+  ) => {
+    setCustomConfirm({
+      isOpen: true,
+      title,
+      message,
+      confirmLabel,
+      cancelLabel,
+      isDestructive,
+      onConfirm: async () => {
+        await onConfirm();
+        setCustomConfirm(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
 
   // Group and count tags
   const tagList = useMemo(() => {
@@ -87,22 +123,24 @@ export const TagManager: React.FC<TagManagerProps> = ({
   };
 
   const handleDeleteTag = async (tagName: string) => {
-    if (!window.confirm(`¿Seguro que deseas eliminar la categoría "${tagName}" de todas las empresas asociadas (${empresas.filter(e => e.tags?.includes(tagName)).length} empresas)?`)) {
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const affected = empresas.filter(emp => emp.tags && emp.tags.includes(tagName));
-      for (const emp of affected) {
-        const updatedTags = emp.tags.filter(t => t !== tagName);
-        await onUpdateEmpresa({ ...emp, tags: updatedTags });
+    askConfirmation(
+      "¿Eliminar Categoría Globalmente?",
+      `¿Estás seguro de que deseas eliminar la categoría "${tagName}" de todas las empresas asociadas (${empresas.filter(e => e.tags?.includes(tagName)).length} empresas)? Esta acción actualizará los proveedores correspondientes.`,
+      async () => {
+        setIsSaving(true);
+        try {
+          const affected = empresas.filter(emp => emp.tags && emp.tags.includes(tagName));
+          for (const emp of affected) {
+            const updatedTags = emp.tags.filter(t => t !== tagName);
+            await onUpdateEmpresa({ ...emp, tags: updatedTags });
+          }
+        } catch (err) {
+          console.error('Error al eliminar etiqueta:', err);
+        } finally {
+          setIsSaving(false);
+        }
       }
-    } catch (err) {
-      console.error('Error al eliminar etiqueta:', err);
-    } finally {
-      setIsSaving(false);
-    }
+    );
   };
 
   const toggleExpand = (tagName: string) => {
@@ -278,6 +316,55 @@ export const TagManager: React.FC<TagManagerProps> = ({
           })
         )}
       </div>
+
+
+      {/* Custom Confirmation Modal */}
+      {customConfirm.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 transition-all duration-300 animate-fadeIn text-left font-sans">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden transform scale-100 transition-all">
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className={`p-3 rounded-xl shrink-0 ${
+                  customConfirm.isDestructive 
+                    ? 'bg-rose-50 text-rose-600 border border-rose-100' 
+                    : 'bg-indigo-50 text-indigo-600 border border-indigo-100'
+                }`}>
+                  <AlertCircle className="w-6 h-6 animate-bounce" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-950">{customConfirm.title}</h3>
+                  <p className="text-sm text-slate-500 mt-2 leading-relaxed">
+                    {customConfirm.message}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setCustomConfirm(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
+              >
+                {customConfirm.cancelLabel || 'Cancelar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  customConfirm.onConfirm();
+                }}
+                className={`px-4 py-2 text-sm font-bold text-white rounded-xl shadow-sm transition-all cursor-pointer ${
+                  customConfirm.isDestructive
+                    ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-100'
+                    : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
+                }`}
+              >
+                {customConfirm.confirmLabel || 'Aceptar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

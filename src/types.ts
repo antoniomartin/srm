@@ -4,7 +4,7 @@
  */
 
 export type EmpresaTipo = 'fabricante' | 'distribuidor' | 'servicios' | 'otros';
-export type EmpresaEstado = 'prospecto' | 'validado' | 'inactivo';
+export type EmpresaEstado = 'prospecto' | 'en_proceso' | 'homologado' | 'en_cuarentena' | 'no_apto' | 'inactivo' | 'validado';
 
 export interface Empresa {
   id?: string;

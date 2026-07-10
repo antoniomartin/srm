@@ -423,6 +423,43 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
 
   const [selectedContactoGravatarFailed, setSelectedContactoGravatarFailed] = useState(false);
 
+  const [customConfirm, setCustomConfirm] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    confirmLabel?: string;
+    cancelLabel?: string;
+    isDestructive?: boolean;
+    onConfirm: () => void | Promise<void>;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
+
+  const askConfirmation = (
+    title: string,
+    message: string,
+    onConfirm: () => void | Promise<void>,
+    isDestructive: boolean = true,
+    confirmLabel: string = "Eliminar",
+    cancelLabel: string = "Cancelar"
+  ) => {
+    setCustomConfirm({
+      isOpen: true,
+      title,
+      message,
+      confirmLabel,
+      cancelLabel,
+      isDestructive,
+      onConfirm: async () => {
+        await onConfirm();
+        setCustomConfirm(prev => ({ ...prev, isOpen: false }));
+      }
+    });
+  };
+
   const selectedContactoGravatarUrl = React.useMemo(() => {
     if (!selectedContacto?.email || !selectedContacto.email.trim()) return null;
     const hash = md5(selectedContacto.email.trim().toLowerCase());
@@ -507,10 +544,31 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                 </div>
                 <h2 className="text-2xl font-bold mt-1 text-slate-50">{selectedEmpresa.nombre}</h2>
                 <div className="flex items-center gap-2 mt-2">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                    selectedEmpresa.estado === 'validado' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide border ${
+                    selectedEmpresa.estado === 'homologado' || selectedEmpresa.estado === 'validado'
+                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                      : selectedEmpresa.estado === 'en_proceso'
+                      ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30'
+                      : selectedEmpresa.estado === 'en_cuarentena'
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                      : selectedEmpresa.estado === 'no_apto'
+                      ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                      : selectedEmpresa.estado === 'inactivo'
+                      ? 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+                      : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
                   }`}>
-                    {selectedEmpresa.estado}
+                    {selectedEmpresa.estado === 'homologado' || selectedEmpresa.estado === 'validado'
+                      ? 'Homologado'
+                      : selectedEmpresa.estado === 'en_proceso'
+                      ? 'En proceso'
+                      : selectedEmpresa.estado === 'en_cuarentena'
+                      ? 'En cuarentena'
+                      : selectedEmpresa.estado === 'no_apto'
+                      ? 'No apto'
+                      : selectedEmpresa.estado === 'inactivo'
+                      ? 'Inactivo'
+                      : 'Prospecto'
+                    }
                   </span>
                   <span className="text-xs text-slate-400">NIT: {selectedEmpresa.nit || 'Sin NIT'}</span>
                 </div>
@@ -549,10 +607,14 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                 </button>
                 <button 
                   onClick={() => {
-                    if (window.confirm("¿Seguro que deseas eliminar esta empresa?")) {
-                      onDeleteEmpresa(selectedEmpresa.id!);
-                      onCloseEmpresa();
-                    }
+                    askConfirmation(
+                      "¿Eliminar Proveedor?",
+                      `¿Estás seguro de que deseas eliminar permanentemente a "${selectedEmpresa.nombre}"? Esta acción borrará el proveedor y no se podrá deshacer.`,
+                      () => {
+                        onDeleteEmpresa(selectedEmpresa.id!);
+                        onCloseEmpresa();
+                      }
+                    );
                   }}
                   className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-50 text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-all cursor-pointer"
                 >
@@ -587,6 +649,25 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
 
               {/* Profile Details Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="md:col-span-2 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Estado de Homologación Oficial</label>
+                  <select
+                    value={selectedEmpresa.estado}
+                    onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'estado', e.target.value as any)}
+                    className="w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm focus:border-indigo-500 outline-none font-semibold text-slate-700 transition-all shadow-sm cursor-pointer"
+                  >
+                    <option value="prospecto">🔵 Prospecto (Sin homologar)</option>
+                    <option value="en_proceso">⏳ En proceso de homologación</option>
+                    <option value="homologado">✅ Homologado oficial</option>
+                    <option value="en_cuarentena">⚠️ En cuarentena / Observación</option>
+                    <option value="no_apto">🚫 No apto / Rechazado</option>
+                    <option value="inactivo">⚫ Inactivo / De baja</option>
+                  </select>
+                  <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
+                    El estado de homologación oficial determina las condiciones comerciales y de auditoría con este proveedor.
+                  </p>
+                </div>
+
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Teléfono</label>
                   <div className="mt-1 flex gap-1">
@@ -1180,10 +1261,14 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
 
                                       <button
                                         type="button"
-                                        onClick={async () => {
-                                          if (window.confirm(`¿Seguro que deseas desvincular a ${dist.nombre}?`)) {
-                                            if (rel.id) await onDeleteRelacion(rel.id);
-                                          }
+                                        onClick={() => {
+                                          askConfirmation(
+                                            "¿Desvincular Distribuidor?",
+                                            `¿Estás seguro de que deseas desvincular a "${dist.nombre}"?`,
+                                            async () => {
+                                              if (rel.id) await onDeleteRelacion(rel.id);
+                                            }
+                                          );
                                         }}
                                         className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                                         title="Desvincular distribuidor"
@@ -1268,11 +1353,15 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
 
                                       <button
                                         type="button"
-                                        onClick={async () => {
-                                          if (window.confirm(`¿Seguro que deseas desvincular el fabricante ${fab.nombre}?`)) {
-                                            if (rel.id) await onDeleteRelacion(rel.id);
-                                          }
-                                        }}
+                                        onClick={() => {
+                                           askConfirmation(
+                                             "¿Desvincular Fabricante?",
+                                             `¿Estás seguro de que deseas desvincular el fabricante "${fab.nombre}"?`,
+                                             async () => {
+                                               if (rel.id) await onDeleteRelacion(rel.id);
+                                             }
+                                           );
+                                         }}
                                         className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                                         title="Desvincular fabricante"
                                       >
@@ -1604,10 +1693,14 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                 </button>
                 <button 
                   onClick={() => {
-                    if (window.confirm("¿Seguro que deseas eliminar este contacto?")) {
-                      onDeleteContacto(selectedContacto.id!);
-                      onCloseContacto();
-                    }
+                    askConfirmation(
+                      "¿Eliminar Contacto?",
+                      `¿Estás seguro de que deseas eliminar permanentemente al contacto "${selectedContacto.nombre}"? Esta acción no se puede deshacer.`,
+                      () => {
+                        onDeleteContacto(selectedContacto.id!);
+                        onCloseContacto();
+                      }
+                    );
                   }}
                   className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-50 text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-all cursor-pointer"
                 >
@@ -2087,10 +2180,14 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
               <div className="flex flex-wrap gap-2 pb-4 border-b border-slate-100">
                 <button 
                   onClick={() => {
-                    if (window.confirm("¿Seguro que deseas eliminar esta interacción?")) {
-                      onDeleteInteraccion(selectedInteraccion.id!);
-                      onCloseInteraccion();
-                    }
+                    askConfirmation(
+                      "¿Eliminar Interacción?",
+                      `¿Estás seguro de que deseas eliminar permanentemente esta interacción con asunto "${selectedInteraccion.asunto}"? Esta acción no se puede deshacer.`,
+                      () => {
+                        onDeleteInteraccion(selectedInteraccion.id!);
+                        onCloseInteraccion();
+                      }
+                    );
                   }}
                   className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-50 text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-all cursor-pointer"
                 >
@@ -2209,23 +2306,29 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                                         alert("La interacción debe tener al menos un participante.");
                                         return;
                                       }
-                                      if (window.confirm(`¿Quitar a ${cont.nombre} de esta interacción?`)) {
-                                        const updatedContactoIds = participantIds.filter(id => id !== cont.id);
-                                        const updatedCompanies = Array.from(new Set(
-                                          contactos
-                                            .filter(c => c.id && updatedContactoIds.includes(c.id))
-                                            .map(c => c.empresaId)
-                                            .filter(Boolean)
-                                        ));
-                                        
-                                        const updatedInter = {
-                                          ...selectedInteraccion,
-                                          contactoId: updatedContactoIds[0],
-                                          contactoIds: updatedContactoIds,
-                                          empresaIds: updatedCompanies
-                                        };
-                                        onUpdateInteraccion(updatedInter);
-                                      }
+                                      askConfirmation(
+                                        "¿Quitar Participante?",
+                                        `¿Estás seguro de que deseas quitar a "${cont.nombre}" de esta interacción?`,
+                                        () => {
+                                          const updatedContactoIds = participantIds.filter(id => id !== cont.id);
+                                          const updatedCompanies = Array.from(new Set(
+                                            contactos
+                                              .filter(c => c.id && updatedContactoIds.includes(c.id))
+                                              .map(c => c.empresaId)
+                                              .filter(Boolean)
+                                          ));
+                                          
+                                          const updatedInter = {
+                                            ...selectedInteraccion,
+                                            contactoId: updatedContactoIds[0],
+                                            contactoIds: updatedContactoIds,
+                                            empresaIds: updatedCompanies
+                                          };
+                                          onUpdateInteraccion(updatedInter);
+                                        },
+                                        false,
+                                        "Quitar"
+                                      );
                                     }}
                                     className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors"
                                     title="Quitar participante"
@@ -2361,11 +2464,17 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                               </button>
                               <button
                                 onClick={() => {
-                                  if (confirm("¿Estás seguro de eliminar este paso?")) {
-                                    const updatedPasos = (selectedInteraccion.pasos || []).filter((_, i) => i !== idx);
-                                    selectedInteraccion.pasos = updatedPasos;
-                                    onUpdateInteraccion(selectedInteraccion);
-                                  }
+                                  askConfirmation(
+                                    "¿Eliminar paso?",
+                                    `¿Estás seguro de que deseas eliminar este paso o compromiso: "${paso.texto}"?`,
+                                    () => {
+                                      const updatedPasos = (selectedInteraccion.pasos || []).filter((_, i) => i !== idx);
+                                      selectedInteraccion.pasos = updatedPasos;
+                                      onUpdateInteraccion(selectedInteraccion);
+                                    },
+                                    true,
+                                    "Eliminar Paso"
+                                  );
                                 }}
                                 className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                                 title="Eliminar"
@@ -2431,6 +2540,55 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
               </button>
               <button onClick={onCloseInteraccion} className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors shadow-sm text-sm cursor-pointer">
                 Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* Custom Confirmation Modal */}
+      {customConfirm.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 transition-all duration-300 animate-fadeIn">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden transform scale-100 transition-all">
+            <div className="p-6">
+              <div className="flex items-start gap-4">
+                <div className={`p-3 rounded-xl shrink-0 ${
+                  customConfirm.isDestructive 
+                    ? 'bg-rose-50 text-rose-600 border border-rose-100' 
+                    : 'bg-indigo-50 text-indigo-600 border border-indigo-100'
+                }`}>
+                  <AlertCircle className="w-6 h-6 animate-bounce" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-slate-950">{customConfirm.title}</h3>
+                  <p className="text-sm text-slate-500 mt-2 leading-relaxed">
+                    {customConfirm.message}
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setCustomConfirm(prev => ({ ...prev, isOpen: false }))}
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
+              >
+                {customConfirm.cancelLabel || 'Cancelar'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  customConfirm.onConfirm();
+                }}
+                className={`px-4 py-2 text-sm font-bold text-white rounded-xl shadow-sm transition-all cursor-pointer ${
+                  customConfirm.isDestructive
+                    ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-100'
+                    : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
+                }`}
+              >
+                {customConfirm.confirmLabel || 'Aceptar'}
               </button>
             </div>
           </div>
