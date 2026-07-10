@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { User, Mail, Phone, ExternalLink } from 'lucide-react';
+import md5 from 'blueimp-md5';
 import { Contacto } from '../types';
 
 interface ContactCardProps {
@@ -23,6 +24,18 @@ export const ContactCard: React.FC<ContactCardProps> = ({
   onClick,
 }) => {
   const isInactive = contacto.estado === 'inactivo';
+
+  const [gravatarFailed, setGravatarFailed] = React.useState(false);
+
+  React.useEffect(() => {
+    setGravatarFailed(false);
+  }, [contacto.email]);
+
+  const gravatarUrl = React.useMemo(() => {
+    if (!contacto.email || !contacto.email.trim()) return null;
+    const hash = md5(contacto.email.trim().toLowerCase());
+    return `https://www.gravatar.com/avatar/${hash}?s=150&d=404`;
+  }, [contacto.email]);
 
   const getInitials = () => {
     const parts = (contacto.nombre || '?').trim().split(/\s+/);
@@ -66,6 +79,17 @@ export const ContactCard: React.FC<ContactCardProps> = ({
                 }`}
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            ) : (!gravatarFailed && gravatarUrl) ? (
+              <img
+                src={gravatarUrl}
+                alt={contacto.nombre}
+                className={`w-11 h-11 rounded-full object-cover border border-slate-100 ${
+                  isInactive ? 'grayscale' : ''
+                }`}
+                onError={() => {
+                  setGravatarFailed(true);
                 }}
               />
             ) : (

@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, Save, Trash2, Tag, Plus, File, ExternalLink, Globe, Sparkles, AlertCircle, CheckCircle2, Link, MapPin, Check, Pencil, Phone
 } from 'lucide-react';
+import md5 from 'blueimp-md5';
 import { Empresa, Contacto, Interaccion, Documento, Relacion, PasoInteraccion, EmpresaTipo } from '../types';
 import { SearchSelect } from './SearchSelect';
 
@@ -398,6 +399,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
     telefono: '',
     email: '',
     reportaA: '' as string | null,
+    foto: '',
   });
 
   const [showAddInterFormEmp, setShowAddInterFormEmp] = useState(false);
@@ -419,15 +421,24 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
     estado: 'pendiente' as 'pendiente' | 'completada',
   });
 
+  const [selectedContactoGravatarFailed, setSelectedContactoGravatarFailed] = useState(false);
+
+  const selectedContactoGravatarUrl = React.useMemo(() => {
+    if (!selectedContacto?.email || !selectedContacto.email.trim()) return null;
+    const hash = md5(selectedContacto.email.trim().toLowerCase());
+    return `https://www.gravatar.com/avatar/${hash}?s=150&d=404`;
+  }, [selectedContacto?.email]);
+
   // Reset forms on selection change
   useEffect(() => {
     setShowAddContactForm(false);
     setShowAddInterFormEmp(false);
     setShowAddInterFormCont(false);
-    setNewContactForm({ nombre: '', cargo: '', telefono: '', email: '', reportaA: null });
+    setSelectedContactoGravatarFailed(false);
+    setNewContactForm({ nombre: '', cargo: '', telefono: '', email: '', reportaA: null, foto: '' });
     setNewInterFormEmp({ asunto: '', tipo: 'reunion', fecha: new Date().toISOString().slice(0, 10), contactoId: '', descripcion: '', estado: 'pendiente' });
     setNewInterFormCont({ asunto: '', tipo: 'reunion', fecha: new Date().toISOString().slice(0, 10), descripcion: '', estado: 'pendiente' });
-  }, [selectedEmpresa?.id, selectedContacto?.id]);
+  }, [selectedEmpresa?.id, selectedContacto?.id, selectedContacto?.email]);
 
   const handleAddTag = async (empresa: Empresa, tag: string) => {
     if (!tag.trim() || empresa.tags.includes(tag)) return;
@@ -897,11 +908,12 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                         telefono: newContactForm.telefono,
                         email: newContactForm.email,
                         reportaA: newContactForm.reportaA,
+                        foto: newContactForm.foto || '',
                         empresaId: selectedEmpresa.id!,
                         estado: 'activo'
                       });
                       setShowAddContactForm(false);
-                      setNewContactForm({ nombre: '', cargo: '', telefono: '', email: '', reportaA: null });
+                      setNewContactForm({ nombre: '', cargo: '', telefono: '', email: '', reportaA: null, foto: '' });
                     }}
                     className="mb-4 bg-indigo-50/40 border border-indigo-100 p-4 rounded-xl space-y-3 shadow-sm"
                   >
@@ -968,6 +980,51 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                           className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs outline-none focus:border-indigo-500"
                           placeholder="juan@empresa.com"
                         />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase">Foto de Perfil (Enlace o archivo)</label>
+                      <div className="mt-1 flex flex-col gap-2 p-2.5 bg-white border border-slate-200 rounded-lg">
+                        <div className="flex gap-2">
+                          {newContactForm.foto && (
+                            <img
+                              src={newContactForm.foto}
+                              alt="Previsualización"
+                              className="w-8 h-8 rounded-full object-cover border border-slate-200"
+                            />
+                          )}
+                          <input
+                            type="text"
+                            value={newContactForm.foto || ''}
+                            onChange={(e) => setNewContactForm({ ...newContactForm, foto: e.target.value })}
+                            className="w-full bg-slate-50 border border-slate-200 rounded py-1 px-2 text-xs outline-none focus:border-indigo-500"
+                            placeholder="Pega un enlace de foto de LinkedIn o de cualquier web..."
+                          />
+                        </div>
+                        <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                          <span className="text-[9px] text-slate-400">O sube una imagen:</span>
+                          <label className="px-2 py-1 bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-400 rounded text-[10px] font-bold text-slate-700 cursor-pointer transition-all">
+                            📁 Seleccionar Archivo
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                  const reader = new FileReader();
+                                  reader.onloadend = () => {
+                                    if (typeof reader.result === 'string') {
+                                      setNewContactForm({ ...newContactForm, foto: reader.result });
+                                    }
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
                       </div>
                     </div>
 
@@ -1506,9 +1563,26 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
             {/* Header */}
             <div className="p-6 bg-indigo-900 text-white flex items-start justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-white/10 rounded-full flex items-center justify-center text-xl font-bold shadow-inner">
-                  👤
-                </div>
+                {selectedContacto.foto ? (
+                  <img
+                    src={selectedContacto.foto}
+                    alt={selectedContacto.nombre}
+                    className="w-14 h-14 rounded-full object-cover shadow-md border-2 border-white/20"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (!selectedContactoGravatarFailed && selectedContactoGravatarUrl) ? (
+                  <img
+                    src={selectedContactoGravatarUrl}
+                    alt={selectedContacto.nombre}
+                    className="w-14 h-14 rounded-full object-cover shadow-md border-2 border-white/20"
+                    referrerPolicy="no-referrer"
+                    onError={() => setSelectedContactoGravatarFailed(true)}
+                  />
+                ) : (
+                  <div className="w-14 h-14 bg-white/10 rounded-full flex items-center justify-center text-xl font-bold shadow-inner border border-white/20 uppercase">
+                    {(selectedContacto.nombre || 'U').slice(0, 2)}
+                  </div>
+                )}
                 <div>
                   <h2 className="text-2xl font-bold text-slate-50">{selectedContacto.nombre}</h2>
                   <p className="text-sm text-indigo-200 font-medium mt-0.5">{selectedContacto.cargo || 'Sin cargo'}</p>
@@ -1636,6 +1710,56 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                         <ExternalLink className="w-4 h-4 shrink-0" />
                       </a>
                     )}
+                  </div>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase">Foto de Perfil (URL o subir archivo)</label>
+                  <div className="mt-1 flex flex-col gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={selectedContacto.foto || ''} 
+                        onChange={(e) => handleInlineSave('contacto', selectedContacto.id!, 'foto', e.target.value)}
+                        placeholder="Pega un enlace de foto de LinkedIn o de cualquier web..."
+                        className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none transition-all"
+                      />
+                      {selectedContacto.foto && (
+                        <button
+                          type="button"
+                          onClick={() => handleInlineSave('contacto', selectedContacto.id!, 'foto', '')}
+                          className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg border border-rose-100 text-xs font-bold transition-colors cursor-pointer shrink-0"
+                          title="Eliminar foto"
+                        >
+                          Eliminar
+                        </button>
+                      )}
+                    </div>
+                    
+                    <div className="flex items-center justify-between gap-4 border-t border-slate-150 pt-3">
+                      <div className="text-[10px] text-slate-400">
+                        O selecciona un archivo de imagen desde tu dispositivo:
+                      </div>
+                      <label className="px-3 py-1.5 bg-white border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/20 text-slate-700 font-bold rounded-lg text-xs cursor-pointer transition-all flex items-center gap-1 shadow-sm shrink-0">
+                        📁 Subir Imagen
+                        <input 
+                          type="file" 
+                          accept="image/*"
+                          className="hidden" 
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              const reader = new FileReader();
+                              reader.onloadend = () => {
+                                if (typeof reader.result === 'string') {
+                                  handleInlineSave('contacto', selectedContacto.id!, 'foto', reader.result);
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }}
+                        />
+                      </label>
+                    </div>
                   </div>
                 </div>
                 <div className="md:col-span-2">
