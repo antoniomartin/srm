@@ -33,6 +33,7 @@ import { LeafletMap } from './components/LeafletMap';
 import { FichasModales } from './components/FichasModales';
 import { SearchSelect } from './components/SearchSelect';
 import { PinLocationMapModal } from './components/PinLocationMapModal';
+import { TagManager } from './components/TagManager';
 
 // Utilities
 import { exportToExcel, parseExcelFile } from './utils/excel';
@@ -176,17 +177,20 @@ export default function App() {
   };
 
   // CRUD Operations Helpers (wrapped to adhere to standard error handlers)
-  const saveDocument = async (col: string, data: any, id?: string) => {
+  const saveDocument = async (col: string, data: any, id?: string): Promise<string | undefined> => {
     setSyncing(true);
     const path = getUserCollectionPath(col);
     try {
       if (id) {
         await setDoc(doc(db, path, id), data, { merge: true });
+        return id;
       } else {
-        await addDoc(collection(db, path), { ...data, fecha_creacion: new Date().toISOString() });
+        const docRef = await addDoc(collection(db, path), { ...data, fecha_creacion: new Date().toISOString() });
+        return docRef.id;
       }
     } catch (err) {
       handleFirestoreError(err, OperationType.WRITE, path);
+      return undefined;
     } finally {
       setSyncing(false);
     }
@@ -762,6 +766,12 @@ export default function App() {
                   scores={scores}
                 />
 
+                <TagManager 
+                  empresas={empresas}
+                  onUpdateEmpresa={async (emp) => { await saveDocument('empresas', emp, emp.id); }}
+                  onOpenEmpresa={(id) => setSelectedEmpId(id)}
+                />
+
                 {/* Import/Export Card */}
                 <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
                   <h4 className="font-bold text-slate-800 text-sm">Respaldo y Archivos</h4>
@@ -824,6 +834,27 @@ export default function App() {
         }}
         onDeleteInteraccion={async (id) => deleteDocument('interacciones', id)}
         onAddRelacion={async (fId, dId, pref) => saveDocument('relaciones', { fabricanteId: fId, distribuidorId: dId, preferente: pref })}
+        onAddEmpresaRapida={async (nombre, tipo) => {
+          const newId = await saveDocument('empresas', {
+            nombre,
+            tipo,
+            estado: 'prospecto',
+            nit: '',
+            direccion: '',
+            cp: '',
+            ciudad: '',
+            provincia: '',
+            pais: 'España',
+            telefono: '',
+            email: '',
+            web: '',
+            notas: '',
+            tags: [],
+            esTambien: [],
+          });
+          return newId;
+        }}
+        onUpdateRelacion={async (rel) => saveDocument('relaciones', rel, rel.id)}
         onDeleteRelacion={async (id) => deleteDocument('relaciones', id)}
         onAddDocumento={async (eId, nom, url, cad) => saveDocument('documentos', { empresaId: eId, nombre: nom, url, fecha: new Date().toISOString(), fechaCaducidad: cad })}
         onDeleteDocumento={async (id) => deleteDocument('documentos', id)}

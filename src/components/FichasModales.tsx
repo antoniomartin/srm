@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, Save, Trash2, Tag, Plus, File, ExternalLink, Globe, Sparkles, AlertCircle, CheckCircle2, Link, MapPin, Check, Pencil
 } from 'lucide-react';
-import { Empresa, Contacto, Interaccion, Documento, Relacion, PasoInteraccion } from '../types';
+import { Empresa, Contacto, Interaccion, Documento, Relacion, PasoInteraccion, EmpresaTipo } from '../types';
 import { SearchSelect } from './SearchSelect';
 
 interface NodoJerarquia {
@@ -128,6 +128,8 @@ interface FichasModalesProps {
   onUpdateInteraccion: (inter: Interaccion) => Promise<void>;
   onDeleteInteraccion: (id: string) => Promise<void>;
   onAddRelacion: (fabId: string, distId: string, pref: 'si' | 'no') => Promise<void>;
+  onAddEmpresaRapida: (nombre: string, tipo: EmpresaTipo) => Promise<string | undefined>;
+  onUpdateRelacion: (rel: Relacion) => Promise<void>;
   onDeleteRelacion: (id: string) => Promise<void>;
   onAddDocumento: (empId: string, nombre: string, url: string, caducidad: string | null) => Promise<void>;
   onDeleteDocumento: (id: string) => Promise<void>;
@@ -137,6 +139,164 @@ interface FichasModalesProps {
   onGeneratePDF: (emp: Empresa) => void;
   scores: { [id: string]: { nivel: string; label: string; dias: number | null } };
 }
+
+interface RelacionAutocompleteProps {
+  empresas: Empresa[];
+  tipoEsperado: 'fabricante' | 'distribuidor';
+  onSelectExisting: (id: string) => Promise<void>;
+  onCreateAndSelect: (nombre: string) => Promise<void>;
+  alreadyLinkedIds: string[];
+  currentEmpresaId: string;
+  placeholder: string;
+}
+
+const RelacionAutocomplete: React.FC<RelacionAutocompleteProps> = ({
+  empresas,
+  tipoEsperado,
+  onSelectExisting,
+  onCreateAndSelect,
+  alreadyLinkedIds,
+  currentEmpresaId,
+  placeholder,
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Filter existing companies
+  const filtered = empresas.filter(e => {
+    // Must be of the expected type
+    const isOfTipo = e.tipo === tipoEsperado || (e.esTambien || []).includes(tipoEsperado);
+    if (!isOfTipo) return false;
+
+    // Cannot be the current company
+    if (e.id === currentEmpresaId) return false;
+
+    // Cannot be already linked
+    if (alreadyLinkedIds.includes(e.id || '')) return false;
+
+    // Match query
+    if (!query.trim()) return true;
+    return e.nombre.toLowerCase().includes(query.toLowerCase().trim());
+  });
+
+  const handleSelect = async (id: string) => {
+    await onSelectExisting(id);
+    setQuery('');
+    setIsOpen(false);
+  };
+
+  const handleCreate = async (name: string) => {
+    if (!name.trim() || isCreating) return;
+    setIsCreating(true);
+    try {
+      await onCreateAndSelect(name.trim());
+      setQuery('');
+      setIsOpen(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Check if the query matches exactly any existing company of ANY type
+  const exactMatch = query.trim() 
+    ? empresas.some(e => e.nombre.toLowerCase() === query.toLowerCase().trim())
+    : false;
+
+  return (
+    <div ref={containerRef} className="relative flex-1">
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          placeholder={placeholder}
+          className="w-full bg-white border border-slate-200 rounded-lg py-2 pl-3 pr-8 text-xs focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+        />
+        {query && (
+          <button
+            type="button"
+            onClick={() => setQuery('')}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-60 overflow-y-auto py-1 text-slate-800">
+          {filtered.length > 0 ? (
+            <div className="py-1">
+              <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-50">
+                Sugerencias ({filtered.length})
+              </div>
+              {filtered.map(emp => (
+                <div
+                  key={emp.id}
+                  onClick={() => handleSelect(emp.id!)}
+                  className="px-3 py-2 text-xs hover:bg-slate-50 cursor-pointer flex items-center justify-between transition-colors"
+                >
+                  <div>
+                    <p className="font-semibold text-slate-700">{emp.nombre}</p>
+                    <p className="text-[10px] text-slate-400">
+                      {emp.ciudad || 'Sin ciudad'} {emp.pais ? `· ${emp.pais}` : ''}
+                    </p>
+                  </div>
+                  <span className="text-[10px] font-medium text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-150">
+                    Vincular
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            query.trim() && (
+              <div className="px-3 py-2 text-xs text-slate-400 italic">
+                No hay empresas existentes que coincidan.
+              </div>
+            )
+          )}
+
+          {/* Proposal to create a new one */}
+          {query.trim() && !exactMatch && (
+            <div className="border-t border-slate-100 mt-1 pt-1">
+              <div
+                onClick={() => handleCreate(query)}
+                className="px-3 py-2.5 text-xs bg-indigo-50/50 hover:bg-indigo-50 text-indigo-700 font-semibold cursor-pointer flex items-center gap-2 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="truncate">Crear nueva empresa: <span className="font-bold underline">"{query.trim()}"</span></p>
+                  <p className="text-[10px] text-indigo-500 font-normal">
+                    Se creará como tipo "{tipoEsperado === 'distribuidor' ? '🚚 distribuidor' : '🏭 fabricante'}" y se vinculará automáticamente.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const FichasModales: React.FC<FichasModalesProps> = ({
   selectedEmpresa,
@@ -159,6 +319,8 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
   onUpdateInteraccion,
   onDeleteInteraccion,
   onAddRelacion,
+  onAddEmpresaRapida,
+  onUpdateRelacion,
   onDeleteRelacion,
   onAddDocumento,
   onDeleteDocumento,
@@ -322,7 +484,16 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
             {/* Header */}
             <div className="p-6 bg-slate-900 text-white flex items-start justify-between">
               <div>
-                <span className="text-xs font-bold text-indigo-400 uppercase tracking-widest">{selectedEmpresa.tipo}</span>
+                <div className="flex flex-wrap gap-1 mb-1.5">
+                  {[selectedEmpresa.tipo, ...(selectedEmpresa.esTambien || [])]
+                    .filter((val, index, self) => val && self.indexOf(val) === index)
+                    .map(role => (
+                      <span key={role} className="text-[10px] font-bold text-indigo-200 bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-400/20 uppercase tracking-wider">
+                        {role === 'fabricante' ? '🏭 fabricante' : role === 'distribuidor' ? '🚚 distribuidor' : role === 'servicios' ? '🛠️ servicios' : '📦 ' + role}
+                      </span>
+                    ))
+                  }
+                </div>
                 <h2 className="text-2xl font-bold mt-1 text-slate-50">{selectedEmpresa.nombre}</h2>
                 <div className="flex items-center gap-2 mt-2">
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
@@ -469,6 +640,152 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                       className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Tipología del Proveedor */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Tipología del Proveedor</label>
+                <div className="flex flex-wrap gap-4 p-3.5 border border-slate-200 rounded-xl bg-slate-50/50">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer select-none">
+                    <input 
+                      type="checkbox"
+                      checked={selectedEmpresa.tipo === 'fabricante' || (selectedEmpresa.esTambien || []).includes('fabricante')}
+                      onChange={async (e) => {
+                        const isChecked = e.target.checked;
+                        let newTipo = selectedEmpresa.tipo;
+                        let newEsTambien = [...(selectedEmpresa.esTambien || [])];
+
+                        if (isChecked) {
+                          if (newTipo !== 'fabricante') {
+                            if (!newEsTambien.includes('fabricante')) {
+                              newEsTambien.push('fabricante');
+                            }
+                          }
+                        } else {
+                          if (newTipo === 'fabricante') {
+                            if (newEsTambien.length > 0) {
+                              newTipo = newEsTambien[0];
+                              newEsTambien = newEsTambien.filter(t => t !== newTipo);
+                            } else {
+                              newTipo = 'otros';
+                            }
+                          } else {
+                            newEsTambien = newEsTambien.filter(t => t !== 'fabricante');
+                          }
+                        }
+                        const updated = { ...selectedEmpresa, tipo: newTipo, esTambien: newEsTambien };
+                        await onUpdateEmpresa(updated);
+                      }}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                    />
+                    <span>🏭 Fabricante</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer select-none">
+                    <input 
+                      type="checkbox"
+                      checked={selectedEmpresa.tipo === 'distribuidor' || (selectedEmpresa.esTambien || []).includes('distribuidor')}
+                      onChange={async (e) => {
+                        const isChecked = e.target.checked;
+                        let newTipo = selectedEmpresa.tipo;
+                        let newEsTambien = [...(selectedEmpresa.esTambien || [])];
+
+                        if (isChecked) {
+                          if (newTipo !== 'distribuidor') {
+                            if (!newEsTambien.includes('distribuidor')) {
+                              newEsTambien.push('distribuidor');
+                            }
+                          }
+                        } else {
+                          if (newTipo === 'distribuidor') {
+                            if (newEsTambien.length > 0) {
+                              newTipo = newEsTambien[0];
+                              newEsTambien = newEsTambien.filter(t => t !== newTipo);
+                            } else {
+                              newTipo = 'otros';
+                            }
+                          } else {
+                            newEsTambien = newEsTambien.filter(t => t !== 'distribuidor');
+                          }
+                        }
+                        const updated = { ...selectedEmpresa, tipo: newTipo, esTambien: newEsTambien };
+                        await onUpdateEmpresa(updated);
+                      }}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                    />
+                    <span>🚚 Distribuidor</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer select-none">
+                    <input 
+                      type="checkbox"
+                      checked={selectedEmpresa.tipo === 'servicios' || (selectedEmpresa.esTambien || []).includes('servicios')}
+                      onChange={async (e) => {
+                        const isChecked = e.target.checked;
+                        let newTipo = selectedEmpresa.tipo;
+                        let newEsTambien = [...(selectedEmpresa.esTambien || [])];
+
+                        if (isChecked) {
+                          if (newTipo !== 'servicios') {
+                            if (!newEsTambien.includes('servicios')) {
+                              newEsTambien.push('servicios');
+                            }
+                          }
+                        } else {
+                          if (newTipo === 'servicios') {
+                            if (newEsTambien.length > 0) {
+                              newTipo = newEsTambien[0];
+                              newEsTambien = newEsTambien.filter(t => t !== newTipo);
+                            } else {
+                              newTipo = 'otros';
+                            }
+                          } else {
+                            newEsTambien = newEsTambien.filter(t => t !== 'servicios');
+                          }
+                        }
+                        const updated = { ...selectedEmpresa, tipo: newTipo, esTambien: newEsTambien };
+                        await onUpdateEmpresa(updated);
+                      }}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                    />
+                    <span>🛠️ Servicios</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 cursor-pointer select-none">
+                    <input 
+                      type="checkbox"
+                      checked={selectedEmpresa.tipo === 'otros' || (selectedEmpresa.esTambien || []).includes('otros')}
+                      onChange={async (e) => {
+                        const isChecked = e.target.checked;
+                        let newTipo = selectedEmpresa.tipo;
+                        let newEsTambien = [...(selectedEmpresa.esTambien || [])];
+
+                        if (isChecked) {
+                          if (newTipo !== 'otros') {
+                            if (!newEsTambien.includes('otros')) {
+                              newEsTambien.push('otros');
+                            }
+                          }
+                        } else {
+                          if (newTipo === 'otros') {
+                            if (newEsTambien.length > 0) {
+                              newTipo = newEsTambien[0];
+                              newEsTambien = newEsTambien.filter(t => t !== newTipo);
+                            } else {
+                              newTipo = 'fabricante';
+                            }
+                          } else {
+                            newEsTambien = newEsTambien.filter(t => t !== 'otros');
+                          }
+                        }
+                        const updated = { ...selectedEmpresa, tipo: newTipo, esTambien: newEsTambien };
+                        await onUpdateEmpresa(updated);
+                      }}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
+                    />
+                    <span>📦 Otros</span>
+                  </label>
                 </div>
               </div>
 
@@ -676,6 +993,222 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                   })()}
                 </div>
               </div>
+
+              {/* Relaciones Fabricante / Distribuidor */}
+              {(() => {
+                const isFabricante = selectedEmpresa.tipo === 'fabricante' || (selectedEmpresa.esTambien || []).includes('fabricante');
+                const isDistribuidor = selectedEmpresa.tipo === 'distribuidor' || (selectedEmpresa.esTambien || []).includes('distribuidor');
+                if (!isFabricante && !isDistribuidor) return null;
+
+                return (
+                  <div className="border-t border-slate-200 pt-5 space-y-6">
+                    <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                      <span>🔗 Red de Distribución y Alianzas</span>
+                    </h4>
+                    
+                    {/* SI ES FABRICANTE -> Ver y gestionar sus Distribuidores */}
+                    {isFabricante && (
+                      <div className="bg-slate-50/50 rounded-2xl border border-slate-200 p-4 space-y-4">
+                        <div>
+                          <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                            🚚 Distribuidores Autorizados de sus Productos
+                          </h5>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Empresas que distribuyen los productos fabricados por esta empresa.
+                          </p>
+                        </div>
+
+                        {/* List of distributors */}
+                        {(() => {
+                          const distRels = relaciones.filter(r => r.fabricanteId === selectedEmpresa.id);
+                          if (distRels.length === 0) {
+                            return (
+                              <p className="text-xs text-slate-400 italic">No hay distribuidores asignados aún.</p>
+                            );
+                          }
+                          return (
+                            <div className="space-y-2">
+                              {distRels.map(rel => {
+                                const dist = empresas.find(e => e.id === rel.distribuidorId);
+                                if (!dist) return null;
+                                const isPref = rel.preferente === 'si';
+                                return (
+                                  <div key={rel.id} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                    <div className="flex items-center gap-2.5">
+                                      <span className="text-lg">🚚</span>
+                                      <div>
+                                        <p className="text-sm font-semibold text-slate-800">{dist.nombre}</p>
+                                        <p className="text-[10px] font-mono text-slate-400">{dist.ciudad || 'Sin ciudad'}, {dist.pais || 'Sin país'}</p>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2">
+                                      {/* Star button for Preferente */}
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          const nextPref = isPref ? 'no' : 'si';
+                                          if (nextPref === 'si') {
+                                            for (const r of distRels) {
+                                              if (r.id) {
+                                                await onUpdateRelacion({
+                                                  ...r,
+                                                  preferente: r.id === rel.id ? 'si' : 'no'
+                                                });
+                                              }
+                                            }
+                                          } else {
+                                            await onUpdateRelacion({
+                                              ...rel,
+                                              preferente: 'no'
+                                            });
+                                          }
+                                        }}
+                                        className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                                          isPref 
+                                            ? 'bg-amber-100 text-amber-700 border border-amber-200 hover:bg-amber-150' 
+                                            : 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'
+                                        }`}
+                                        title={isPref ? "Quitar como preferente" : "Marcar como distribuidor preferente"}
+                                      >
+                                        ⭐ {isPref ? 'Preferente' : 'Hacer Preferente'}
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          if (window.confirm(`¿Seguro que deseas desvincular a ${dist.nombre}?`)) {
+                                            if (rel.id) await onDeleteRelacion(rel.id);
+                                          }
+                                        }}
+                                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                                        title="Desvincular distribuidor"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Add distributor form */}
+                        <div className="pt-3 border-t border-slate-150">
+                          <RelacionAutocomplete
+                            empresas={empresas}
+                            tipoEsperado="distribuidor"
+                            alreadyLinkedIds={relaciones
+                              .filter(r => r.fabricanteId === selectedEmpresa.id)
+                              .map(r => r.distribuidorId)
+                            }
+                            currentEmpresaId={selectedEmpresa.id!}
+                            placeholder="Escribe para buscar o crear nuevo distribuidor..."
+                            onSelectExisting={async (id) => {
+                              await onAddRelacion(selectedEmpresa.id!, id, 'no');
+                            }}
+                            onCreateAndSelect={async (nombre) => {
+                              const newId = await onAddEmpresaRapida(nombre, 'distribuidor');
+                              if (newId) {
+                                await onAddRelacion(selectedEmpresa.id!, newId, 'no');
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SI ES DISTRIBUIDOR -> Ver y gestionar sus Fabricantes */}
+                    {isDistribuidor && (
+                      <div className="bg-slate-50/50 rounded-2xl border border-slate-200 p-4 space-y-4">
+                        <div>
+                          <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                            🏭 Fabricantes que Distribuye esta Empresa
+                          </h5>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Marcas y fabricantes de los cuales esta empresa es distribuidor autorizado.
+                          </p>
+                        </div>
+
+                        {/* List of manufacturers */}
+                        {(() => {
+                          const fabRels = relaciones.filter(r => r.distribuidorId === selectedEmpresa.id);
+                          if (fabRels.length === 0) {
+                            return (
+                              <p className="text-xs text-slate-400 italic">No hay fabricantes asignados aún.</p>
+                            );
+                          }
+                          return (
+                            <div className="space-y-2">
+                              {fabRels.map(rel => {
+                                const fab = empresas.find(e => e.id === rel.fabricanteId);
+                                if (!fab) return null;
+                                const isPref = rel.preferente === 'si';
+                                return (
+                                  <div key={rel.id} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl shadow-sm">
+                                    <div className="flex items-center gap-2.5">
+                                      <span className="text-lg">🏭</span>
+                                      <div>
+                                        <p className="text-sm font-semibold text-slate-800">{fab.nombre}</p>
+                                        <p className="text-[10px] font-mono text-slate-400">{fab.ciudad || 'Sin ciudad'}, {fab.pais || 'Sin país'}</p>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-2">
+                                      {isPref && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold bg-amber-50 text-amber-600 border border-amber-200">
+                                          ⭐ Distribuidor Preferente
+                                        </span>
+                                      )}
+
+                                      <button
+                                        type="button"
+                                        onClick={async () => {
+                                          if (window.confirm(`¿Seguro que deseas desvincular el fabricante ${fab.nombre}?`)) {
+                                            if (rel.id) await onDeleteRelacion(rel.id);
+                                          }
+                                        }}
+                                        className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                                        title="Desvincular fabricante"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Add manufacturer form */}
+                        <div className="pt-3 border-t border-slate-150">
+                          <RelacionAutocomplete
+                            empresas={empresas}
+                            tipoEsperado="fabricante"
+                            alreadyLinkedIds={relaciones
+                              .filter(r => r.distribuidorId === selectedEmpresa.id)
+                              .map(r => r.fabricanteId)
+                            }
+                            currentEmpresaId={selectedEmpresa.id!}
+                            placeholder="Escribe para buscar o crear nuevo fabricante..."
+                            onSelectExisting={async (id) => {
+                              await onAddRelacion(id, selectedEmpresa.id!, 'no');
+                            }}
+                            onCreateAndSelect={async (nombre) => {
+                              const newId = await onAddEmpresaRapida(nombre, 'fabricante');
+                              if (newId) {
+                                await onAddRelacion(newId, selectedEmpresa.id!, 'no');
+                              }
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Historial de Interacciones del Proveedor */}
               <div>
