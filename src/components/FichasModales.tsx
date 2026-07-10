@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  X, Save, Trash2, Tag, Plus, File, ExternalLink, Globe, Sparkles, AlertCircle, CheckCircle2, Link, MapPin
+  X, Save, Trash2, Tag, Plus, File, ExternalLink, Globe, Sparkles, AlertCircle, CheckCircle2, Link, MapPin, Check, Pencil
 } from 'lucide-react';
 import { Empresa, Contacto, Interaccion, Documento, Relacion, PasoInteraccion } from '../types';
 import { SearchSelect } from './SearchSelect';
@@ -169,6 +169,11 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiInsights, setAiInsights] = useState<string | null>(null);
+
+  // States for editing interaction steps
+  const [editingPasoIndex, setEditingPasoIndex] = useState<number | null>(null);
+  const [editingPasoText, setEditingPasoText] = useState('');
+  const [editingPasoDate, setEditingPasoDate] = useState('');
 
   // Drag and drop attachment state
   const [dragActive, setDragDropActive] = useState(false);
@@ -1527,26 +1532,97 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                   <h4 className="font-bold text-slate-800 text-sm border-b border-slate-100 pb-2 mb-3">📋 Plan de Pasos & Compromisos</h4>
                   <div className="space-y-2">
                     {(selectedInteraccion.pasos || []).map((paso, idx) => (
-                      <div key={idx} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-slate-50">
-                        <div className="flex items-center gap-2">
-                          <input 
-                            type="checkbox" 
-                            checked={paso.completado || false}
-                            onChange={(e) => {
-                              const updatedPasos = [...(selectedInteraccion.pasos || [])];
-                              updatedPasos[idx] = { ...paso, completado: e.target.checked };
-                              selectedInteraccion.pasos = updatedPasos;
-                              onUpdateInteraccion(selectedInteraccion);
-                            }}
-                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
-                          />
-                          <span className={`text-sm ${paso.completado ? 'line-through text-slate-400' : 'text-slate-700'}`}>
-                            {paso.texto}
-                          </span>
-                        </div>
-                        <span className="text-[10px] font-bold text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded">
-                          {paso.fecha}
-                        </span>
+                      <div key={idx} className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-slate-50 gap-2">
+                        {editingPasoIndex === idx ? (
+                          <div className="flex flex-1 items-center gap-2">
+                            <input 
+                              type="text"
+                              value={editingPasoText}
+                              onChange={(e) => setEditingPasoText(e.target.value)}
+                              className="flex-1 bg-white border border-slate-200 rounded-lg py-1 px-2 text-xs outline-none focus:border-indigo-500 font-medium"
+                            />
+                            <input 
+                              type="date"
+                              value={editingPasoDate}
+                              onChange={(e) => setEditingPasoDate(e.target.value)}
+                              className="bg-white border border-slate-200 rounded-lg py-1 px-2 text-xs outline-none font-medium"
+                            />
+                            <button
+                              onClick={() => {
+                                if (editingPasoText.trim()) {
+                                  const updatedPasos = [...(selectedInteraccion.pasos || [])];
+                                  updatedPasos[idx] = { 
+                                    ...paso, 
+                                    texto: editingPasoText.trim(), 
+                                    fecha: editingPasoDate 
+                                  };
+                                  selectedInteraccion.pasos = updatedPasos;
+                                  onUpdateInteraccion(selectedInteraccion);
+                                  setEditingPasoIndex(null);
+                                }
+                              }}
+                              className="p-1 px-2 rounded bg-indigo-600 text-white hover:bg-indigo-700 text-xs font-bold transition-colors cursor-pointer"
+                              title="Guardar"
+                            >
+                              Guardar
+                            </button>
+                            <button
+                              onClick={() => setEditingPasoIndex(null)}
+                              className="p-1 px-2 rounded bg-slate-200 text-slate-700 hover:bg-slate-300 text-xs font-bold transition-colors cursor-pointer"
+                              title="Cancelar"
+                            >
+                              X
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <input 
+                                type="checkbox" 
+                                checked={paso.completado || false}
+                                onChange={(e) => {
+                                  const updatedPasos = [...(selectedInteraccion.pasos || [])];
+                                  updatedPasos[idx] = { ...paso, completado: e.target.checked };
+                                  selectedInteraccion.pasos = updatedPasos;
+                                  onUpdateInteraccion(selectedInteraccion);
+                                }}
+                                className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                              />
+                              <span className="text-sm text-slate-700">
+                                {paso.texto}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[10px] font-bold text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded">
+                                {paso.fecha}
+                              </span>
+                              <button
+                                onClick={() => {
+                                  setEditingPasoIndex(idx);
+                                  setEditingPasoText(paso.texto);
+                                  setEditingPasoDate(paso.fecha || '');
+                                }}
+                                className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                                title="Editar"
+                              >
+                                <Pencil className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm("¿Estás seguro de eliminar este paso?")) {
+                                    const updatedPasos = (selectedInteraccion.pasos || []).filter((_, i) => i !== idx);
+                                    selectedInteraccion.pasos = updatedPasos;
+                                    onUpdateInteraccion(selectedInteraccion);
+                                  }
+                                }}
+                                className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title="Eliminar"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     ))}
                     
