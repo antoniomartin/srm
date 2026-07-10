@@ -32,6 +32,7 @@ import { CustomCalendar } from './components/CustomCalendar';
 import { LeafletMap } from './components/LeafletMap';
 import { FichasModales } from './components/FichasModales';
 import { SearchSelect } from './components/SearchSelect';
+import { PinLocationMapModal } from './components/PinLocationMapModal';
 
 // Utilities
 import { exportToExcel, parseExcelFile } from './utils/excel';
@@ -92,6 +93,7 @@ export default function App() {
   // Open / Close alerts modal
   const [showAlertsModal, setShowAlertsModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [pinningEmpresa, setPinningEmpresa] = useState<Empresa | null>(null);
 
   // 1. Auth Listener & test connection
   useEffect(() => {
@@ -110,6 +112,7 @@ export default function App() {
         setShowSearchModal(false);
         setShowAlertsModal(false);
         setShowCalendarModal(false);
+        setPinningEmpresa(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -824,45 +827,10 @@ export default function App() {
         onDeleteRelacion={async (id) => deleteDocument('relaciones', id)}
         onAddDocumento={async (eId, nom, url, cad) => saveDocument('documentos', { empresaId: eId, nombre: nom, url, fecha: new Date().toISOString(), fechaCaducidad: cad })}
         onDeleteDocumento={async (id) => deleteDocument('documentos', id)}
-        onGeocodeManual={async (id) => {
+        onGeocodeManual={(id) => {
           const emp = empresas.find(e => e.id === id);
-          if (!emp) return;
-          const queryParts = [emp.direccion, emp.ciudad, emp.pais].filter(Boolean);
-          if (queryParts.length === 0) {
-            alert("⚠️ Por favor, introduce primero una dirección, ciudad o país para georreferenciar.");
-            return;
-          }
-          const query = queryParts.join(', ');
-          const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`;
-          try {
-            const res = await fetch(url);
-            const data = await res.json();
-            if (data && data.length > 0) {
-              const _lat = parseFloat(data[0].lat);
-              const _lon = parseFloat(data[0].lon);
-              await saveDocument('empresas', { ...emp, _lat, _lon }, emp.id);
-              alert(`📍 Ubicación fijada con éxito: ${_lat.toFixed(4)}, ${_lon.toFixed(4)} para "${emp.nombre}"`);
-            } else {
-              // Try fallback with just ciudad and pais
-              const fallbackParts = [emp.ciudad, emp.pais].filter(Boolean);
-              if (fallbackParts.length > 0) {
-                const fallbackQuery = fallbackParts.join(', ');
-                const fallbackUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fallbackQuery)}`;
-                const fallbackRes = await fetch(fallbackUrl);
-                const fallbackData = await fallbackRes.json();
-                if (fallbackData && fallbackData.length > 0) {
-                  const _lat = parseFloat(fallbackData[0].lat);
-                  const _lon = parseFloat(fallbackData[0].lon);
-                  await saveDocument('empresas', { ...emp, _lat, _lon }, emp.id);
-                  alert(`📍 Ubicación aproximada (Ciudad, País) fijada: ${_lat.toFixed(4)}, ${_lon.toFixed(4)}`);
-                  return;
-                }
-              }
-              alert(`⚠️ No se pudo georreferenciar la dirección: "${query}". Intenta con una dirección más simple o revisa la ortografía.`);
-            }
-          } catch (err) {
-            console.error("Geocoding manual failed", err);
-            alert("⚠️ Error de conexión al servicio de geolocalización.");
+          if (emp) {
+            setPinningEmpresa(emp);
           }
         }}
         onGeneratePDF={handleGenerateReportPDF}
@@ -1600,6 +1568,19 @@ export default function App() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Manual Pin Location Map Modal */}
+      {pinningEmpresa && (
+        <PinLocationMapModal
+          empresa={pinningEmpresa}
+          onCancel={() => setPinningEmpresa(null)}
+          onConfirm={async (lat, lon) => {
+            const updatedEmp = { ...pinningEmpresa, _lat: lat, _lon: lon, _manual: true };
+            await saveDocument('empresas', updatedEmp, pinningEmpresa.id);
+            setPinningEmpresa(null);
+          }}
+        />
       )}
     </div>
   );
