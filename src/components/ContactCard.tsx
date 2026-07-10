@@ -117,10 +117,40 @@ export const ContactCard: React.FC<ContactCardProps> = ({
             </p>
           )}
           {contacto.telefono && (
-            <p className="flex items-center gap-1.5">
-              <Phone className="w-3.5 h-3.5 text-slate-400" />
-              <span>{contacto.telefono}</span>
-            </p>
+            <div className="flex items-center justify-between gap-1.5 mt-1 bg-slate-50/50 hover:bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100" onClick={(e) => e.stopPropagation()}>
+              <span className="flex items-center gap-1.5 text-slate-600 truncate">
+                <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span className="truncate font-medium">{contacto.telefono}</span>
+              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                <a
+                  href={`tel:${contacto.telefono}`}
+                  className="p-1 hover:bg-indigo-150 text-slate-400 hover:text-indigo-600 rounded transition-colors"
+                  title="Llamar directamente"
+                >
+                  <Phone className="w-3.5 h-3.5" />
+                </a>
+                <a
+                  href={(() => {
+                    const clean = contacto.telefono.replace(/[^\d]/g, '');
+                    const finalPhone = (clean.length === 9 && (clean.startsWith('6') || clean.startsWith('7') || clean.startsWith('9'))) ? '34' + clean : clean;
+                    const hour = new Date().getHours();
+                    const saludo = hour < 12 ? 'Buenos\u00A0d\u00EDas' : 'Buenas\u00A0tardes';
+                    const firstName = (contacto.nombre || '').trim().split(/\s+/)[0];
+                    const text = `${saludo} ${firstName}, `;
+                    return `https://wa.me/${finalPhone}?text=${encodeURIComponent(text)}`;
+                  })()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-1 hover:bg-emerald-100 text-slate-400 hover:text-emerald-600 rounded transition-colors"
+                  title="Enviar WhatsApp"
+                >
+                  <svg className="w-3.5 h-3.5 fill-current text-slate-400 hover:text-emerald-600" viewBox="0 0 24 24">
+                    <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.665.988 3.3.15 5.36.15 5.51 0 9.995-4.485 9.999-10 .002-2.673-1.04-5.186-2.935-7.082C17.13 3.328 14.62 2.283 12 2.28 6.49 2.28 2.005 6.765 2.001 12.28c-.002 2.01.523 3.974 1.52 5.711l-.997 3.642 3.734-.98z"/>
+                  </svg>
+                </a>
+              </div>
+            </div>
           )}
         </div>
       </div>

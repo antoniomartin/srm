@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  X, Save, Trash2, Tag, Plus, File, ExternalLink, Globe, Sparkles, AlertCircle, CheckCircle2, Link, MapPin, Check, Pencil
+  X, Save, Trash2, Tag, Plus, File, ExternalLink, Globe, Sparkles, AlertCircle, CheckCircle2, Link, MapPin, Check, Pencil, Phone
 } from 'lucide-react';
 import { Empresa, Contacto, Interaccion, Documento, Relacion, PasoInteraccion, EmpresaTipo } from '../types';
 import { SearchSelect } from './SearchSelect';
@@ -578,12 +578,43 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Teléfono</label>
-                  <input 
-                    type="text" 
-                    value={selectedEmpresa.telefono} 
-                    onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'telefono', e.target.value)}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
-                  />
+                  <div className="mt-1 flex gap-1">
+                    <input 
+                      type="text" 
+                      value={selectedEmpresa.telefono} 
+                      onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'telefono', e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                    />
+                    {selectedEmpresa.telefono && (
+                      <div className="flex gap-1">
+                        <a
+                          href={`tel:${selectedEmpresa.telefono}`}
+                          className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center border border-indigo-100 transition-colors cursor-pointer"
+                          title="Llamar directamente"
+                        >
+                          <Phone className="w-4 h-4 shrink-0" />
+                        </a>
+                        <a
+                          href={(() => {
+                            const clean = selectedEmpresa.telefono.replace(/[^\d]/g, '');
+                            const finalPhone = (clean.length === 9 && (clean.startsWith('6') || clean.startsWith('7') || clean.startsWith('9'))) ? '34' + clean : clean;
+                            const hour = new Date().getHours();
+                            const saludo = hour < 12 ? 'Buenos\u00A0d\u00EDas' : 'Buenas\u00A0tardes';
+                            const text = `${saludo}, `;
+                            return `https://wa.me/${finalPhone}?text=${encodeURIComponent(text)}`;
+                          })()}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-lg flex items-center justify-center border border-emerald-100 transition-colors cursor-pointer"
+                          title="Enviar WhatsApp"
+                        >
+                          <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.665.988 3.3.15 5.36.15 5.51 0 9.995-4.485 9.999-10 .002-2.673-1.04-5.186-2.935-7.082C17.13 3.328 14.62 2.283 12 2.28 6.49 2.28 2.005 6.765 2.001 12.28c-.002 2.01.523 3.974 1.52 5.711l-.997 3.642 3.734-.98z"/>
+                          </svg>
+                        </a>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Email corporativo</label>
@@ -596,12 +627,28 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Sitio Web</label>
-                  <input 
-                    type="text" 
-                    value={selectedEmpresa.web} 
-                    onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'web', e.target.value)}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
-                  />
+                  <div className="mt-1 flex gap-1">
+                    <input 
+                      type="text" 
+                      value={selectedEmpresa.web} 
+                      onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'web', e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                    />
+                    {selectedEmpresa.web && (
+                      <a
+                        href={selectedEmpresa.web.trim().startsWith('http://') || selectedEmpresa.web.trim().startsWith('https://') 
+                          ? selectedEmpresa.web.trim() 
+                          : `https://${selectedEmpresa.web.trim()}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center border border-indigo-100 transition-colors cursor-pointer"
+                        title="Visitar sitio web en el navegador"
+                      >
+                        <ExternalLink className="w-4 h-4 shrink-0" />
+                      </a>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Grupo / Consorcio</label>
@@ -1518,12 +1565,44 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Teléfono móvil</label>
-                  <input 
-                    type="text" 
-                    value={selectedContacto.telefono} 
-                    onChange={(e) => handleInlineSave('contacto', selectedContacto.id!, 'telefono', e.target.value)}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
-                  />
+                  <div className="mt-1 flex gap-1">
+                    <input 
+                      type="text" 
+                      value={selectedContacto.telefono} 
+                      onChange={(e) => handleInlineSave('contacto', selectedContacto.id!, 'telefono', e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                    />
+                    {selectedContacto.telefono && (
+                      <div className="flex gap-1">
+                        <a
+                          href={`tel:${selectedContacto.telefono}`}
+                          className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center border border-indigo-100 transition-colors cursor-pointer"
+                          title="Llamar directamente"
+                        >
+                          <Phone className="w-4 h-4 shrink-0" />
+                        </a>
+                        <a
+                          href={(() => {
+                            const clean = selectedContacto.telefono.replace(/[^\d]/g, '');
+                            const finalPhone = (clean.length === 9 && (clean.startsWith('6') || clean.startsWith('7') || clean.startsWith('9'))) ? '34' + clean : clean;
+                            const hour = new Date().getHours();
+                            const saludo = hour < 12 ? 'Buenos\u00A0d\u00EDas' : 'Buenas\u00A0tardes';
+                            const firstName = (selectedContacto.nombre || '').trim().split(/\s+/)[0];
+                            const text = `${saludo} ${firstName}, `;
+                            return `https://wa.me/${finalPhone}?text=${encodeURIComponent(text)}`;
+                          })()}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-lg flex items-center justify-center border border-emerald-100 transition-colors cursor-pointer"
+                          title="Enviar WhatsApp"
+                        >
+                          <svg className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                            <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.513 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.455L0 24zm6.59-4.846c1.665.988 3.3.15 5.36.15 5.51 0 9.995-4.485 9.999-10 .002-2.673-1.04-5.186-2.935-7.082C17.13 3.328 14.62 2.283 12 2.28 6.49 2.28 2.005 6.765 2.001 12.28c-.002 2.01.523 3.974 1.52 5.711l-.997 3.642 3.734-.98z"/>
+                          </svg>
+                        </a>
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Email personal/profesional</label>
@@ -1536,12 +1615,28 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-xs font-bold text-slate-500 uppercase">Enlace LinkedIn (Perfil)</label>
-                  <input 
-                    type="text" 
-                    value={selectedContacto.linkedin} 
-                    onChange={(e) => handleInlineSave('contacto', selectedContacto.id!, 'linkedin', e.target.value)}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
-                  />
+                  <div className="mt-1 flex gap-1">
+                    <input 
+                      type="text" 
+                      value={selectedContacto.linkedin} 
+                      onChange={(e) => handleInlineSave('contacto', selectedContacto.id!, 'linkedin', e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                    />
+                    {selectedContacto.linkedin && (
+                      <a
+                        href={selectedContacto.linkedin.trim().startsWith('http://') || selectedContacto.linkedin.trim().startsWith('https://') 
+                          ? selectedContacto.linkedin.trim() 
+                          : `https://${selectedContacto.linkedin.trim()}`
+                        }
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center border border-indigo-100 transition-colors cursor-pointer"
+                        title="Visitar perfil de LinkedIn en el navegador"
+                      >
+                        <ExternalLink className="w-4 h-4 shrink-0" />
+                      </a>
+                    )}
+                  </div>
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Superior Jerárquico (Reporta A)</label>
