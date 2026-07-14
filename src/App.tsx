@@ -70,6 +70,30 @@ export default function App() {
   const [selectedContId, setSelectedContactoId] = useState<string | null>(null);
   const [selectedInterId, setSelectedInterId] = useState<string | null>(null);
 
+  const handleOpenEmpresa = (id: string | null) => {
+    setSelectedEmpId(id);
+    if (id) {
+      setSelectedContactoId(null);
+      setSelectedInterId(null);
+    }
+  };
+
+  const handleOpenContacto = (id: string | null) => {
+    setSelectedContactoId(id);
+    if (id) {
+      setSelectedEmpId(null);
+      setSelectedInterId(null);
+    }
+  };
+
+  const handleOpenInteraccion = (id: string | null) => {
+    setSelectedInterId(id);
+    if (id) {
+      setSelectedEmpId(null);
+      setSelectedContactoId(null);
+    }
+  };
+
   // Creation Modals
   const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
@@ -702,7 +726,7 @@ export default function App() {
                     score={scores[emp.id!] || { nivel: 'gris', label: 'Sin datos', dias: null }}
                     selectedTag={selectedTag}
                     onTagClick={setSelectedTag}
-                    onClick={() => setSelectedEmpId(emp.id!)}
+                    onClick={() => handleOpenEmpresa(emp.id!)}
                   />
                 ))}
               </div>
@@ -726,7 +750,7 @@ export default function App() {
                       empresaNombre={empName}
                       pendingCount={pend}
                       superiorNombre={superiorName}
-                      onClick={() => setSelectedContactoId(cont.id!)}
+                      onClick={() => handleOpenContacto(cont.id!)}
                     />
                   );
                 })}
@@ -749,7 +773,7 @@ export default function App() {
                       empresaNombre={empName}
                       fechaRelativaHtml={relativeHtml}
                       isOverdue={isOverdue}
-                      onClick={() => setSelectedInterId(inter.id!)}
+                      onClick={() => handleOpenInteraccion(inter.id!)}
                     />
                   );
                 })}
@@ -760,7 +784,7 @@ export default function App() {
               <div className="space-y-6">
                 <LeafletMap 
                   empresas={empresas}
-                  onOpenFicha={(id) => setSelectedEmpId(id)}
+                  onOpenFicha={(id) => handleOpenEmpresa(id)}
                   selectedTipo="todos"
                   selectedEstado="todos"
                   scores={scores}
@@ -769,7 +793,7 @@ export default function App() {
                 <TagManager 
                   empresas={empresas}
                   onUpdateEmpresa={async (emp) => { await saveDocument('empresas', emp, emp.id); }}
-                  onOpenEmpresa={(id) => setSelectedEmpId(id)}
+                  onOpenEmpresa={(id) => handleOpenEmpresa(id)}
                 />
 
                 {/* Import/Export Card */}
@@ -815,9 +839,9 @@ export default function App() {
         onCloseEmpresa={() => setSelectedEmpId(null)}
         onCloseContacto={() => setSelectedContactoId(null)}
         onCloseInteraccion={() => setSelectedInterId(null)}
-        onOpenContacto={(id) => setSelectedContactoId(id)}
-        onOpenInteraccion={(id) => setSelectedInterId(id)}
-        onOpenEmpresa={(id) => setSelectedEmpId(id)}
+        onOpenContacto={(id) => handleOpenContacto(id)}
+        onOpenInteraccion={(id) => handleOpenInteraccion(id)}
+        onOpenEmpresa={(id) => handleOpenEmpresa(id)}
         empresas={empresas}
         contactos={contactos}
         interacciones={interacciones}
@@ -898,7 +922,7 @@ export default function App() {
                 contactos={contactos}
                 empresas={empresas}
                 onEventClick={(id) => {
-                  setSelectedInterId(id);
+                  handleOpenInteraccion(id);
                   setShowCalendarModal(false);
                 }}
               />
@@ -984,7 +1008,7 @@ export default function App() {
                               </div>
                               <button
                                 onClick={() => {
-                                  setSelectedInterId(inter.id!);
+                                  handleOpenInteraccion(inter.id!);
                                   setShowAlertsModal(false);
                                 }}
                                 className="self-start sm:self-center bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 hover:border-rose-300 font-bold text-xs px-3.5 py-2 rounded-lg shadow-sm flex items-center gap-1 transition-all cursor-pointer whitespace-nowrap"
@@ -1031,7 +1055,7 @@ export default function App() {
                               </div>
                               <button
                                 onClick={() => {
-                                  setSelectedEmpId(d.empresaId);
+                                  handleOpenEmpresa(d.empresaId);
                                   setShowAlertsModal(false);
                                 }}
                                 className="self-start sm:self-center bg-white hover:bg-amber-50 text-amber-700 border border-amber-200 hover:border-amber-300 font-bold text-xs px-3.5 py-2 rounded-lg shadow-sm flex items-center gap-1 transition-all cursor-pointer whitespace-nowrap"
@@ -1074,7 +1098,7 @@ export default function App() {
                             </div>
                             <button
                               onClick={() => {
-                                setSelectedEmpId(emp.id!);
+                                handleOpenEmpresa(emp.id!);
                                 setShowAlertsModal(false);
                               }}
                               className="self-start sm:self-center bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 hover:border-slate-300 font-bold text-xs px-3.5 py-2 rounded-lg shadow-sm flex items-center gap-1 transition-all cursor-pointer whitespace-nowrap"
@@ -1172,7 +1196,7 @@ export default function App() {
                               <div 
                                 key={emp.id}
                                 onClick={() => {
-                                  setSelectedEmpId(emp.id!);
+                                  handleOpenEmpresa(emp.id!);
                                   setShowSearchModal(false);
                                   setGlobalSearch('');
                                 }}
@@ -1213,7 +1237,7 @@ export default function App() {
                                 <div 
                                   key={cont.id}
                                   onClick={() => {
-                                    setSelectedContactoId(cont.id!);
+                                    handleOpenContacto(cont.id!);
                                     setShowSearchModal(false);
                                     setGlobalSearch('');
                                   }}
@@ -1246,7 +1270,7 @@ export default function App() {
                               <div 
                                 key={inter.id}
                                 onClick={() => {
-                                  setSelectedInterId(inter.id!);
+                                  handleOpenInteraccion(inter.id!);
                                   setShowSearchModal(false);
                                   setGlobalSearch('');
                                 }}

@@ -2451,17 +2451,52 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                         onChange={(val) => handleInlineSave('contacto', selectedContacto.id!, 'empresaId', val)}
                         options={empresas.map(e => ({ value: e.id!, label: e.nombre, sublabel: e.tipo }))}
                       />
+                      {selectedContacto.empresaId && (() => {
+                        const emp = empresas.find(e => e.id === selectedContacto.empresaId);
+                        if (!emp) return null;
+                        return (
+                          <div className="mt-2.5">
+                            <button
+                              type="button"
+                              onClick={() => onOpenEmpresa && emp.id && onOpenEmpresa(emp.id)}
+                              className="w-full text-left p-2.5 bg-white hover:bg-indigo-50/40 border border-slate-200 hover:border-indigo-200 rounded-xl transition-all flex items-center justify-between cursor-pointer group shadow-sm"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className="text-sm shrink-0">🏢</span>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-700 group-hover:text-indigo-600 transition-colors truncate">
+                                    {emp.nombre}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 capitalize truncate">
+                                    {emp.ciudad || 'Sin ciudad'} • {emp.tipo}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-bold text-indigo-600 group-hover:bg-indigo-100 group-hover:text-indigo-800 transition-all shrink-0 flex items-center gap-0.5 bg-indigo-50 px-2 py-1 rounded-lg">
+                                Ver Ficha →
+                              </span>
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     <div>
                       <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Otras Empresas Vinculadas</label>
                       <div className="mt-1 flex flex-col gap-2">
-                        <div className="flex flex-wrap gap-1 border border-slate-200 rounded-lg bg-white p-2 min-h-[36px]">
+                        <div className="flex flex-wrap gap-1.5 border border-slate-200 rounded-lg bg-white p-2 min-h-[36px] items-center">
                           {empresas
                             .filter(e => selectedContacto.empresaIds?.includes(e.id!) && e.id !== selectedContacto.empresaId)
                             .map(e => (
-                              <span key={e.id} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-semibold border border-indigo-150">
-                                {e.nombre}
+                              <span key={e.id} className="inline-flex items-center gap-1.5 bg-indigo-50/60 hover:bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full text-[10px] font-semibold border border-indigo-150 transition-all">
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenEmpresa && e.id && onOpenEmpresa(e.id)}
+                                  className="hover:underline text-left cursor-pointer font-bold flex items-center gap-1"
+                                  title={`Ver ficha de ${e.nombre}`}
+                                >
+                                  <span>🏢 {e.nombre}</span>
+                                </button>
                                 <button 
                                   type="button"
                                   onClick={() => {
@@ -2469,7 +2504,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                                     const updatedIds = currentIds.filter(id => id !== e.id);
                                     handleInlineSave('contacto', selectedContacto.id!, 'empresaIds', updatedIds);
                                   }}
-                                  className="text-indigo-400 hover:text-indigo-600 font-bold"
+                                  className="text-indigo-400 hover:text-rose-600 font-bold ml-0.5 transition-colors"
                                 >
                                   ✕
                                 </button>
@@ -2842,14 +2877,25 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                                       {/* Companies list */}
                                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                         {empresaPrincipal && (
-                                          <span className="inline-flex items-center bg-indigo-50 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded font-semibold border border-indigo-150">
+                                          <button
+                                            type="button"
+                                            onClick={() => onOpenEmpresa && onOpenEmpresa(empresaPrincipal.id!)}
+                                            className="inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] px-2 py-0.5 rounded font-semibold border border-indigo-150 transition-all cursor-pointer"
+                                            title={`Ver ficha de ${empresaPrincipal.nombre}`}
+                                          >
                                             🏢 {empresaPrincipal.nombre}
-                                          </span>
+                                          </button>
                                         )}
                                         {otrasEmpresas.map(e => (
-                                          <span key={e.id} className="inline-flex items-center bg-slate-100 text-slate-700 text-[10px] px-1.5 py-0.5 rounded font-medium border border-slate-250">
+                                          <button
+                                            key={e.id}
+                                            type="button"
+                                            onClick={() => onOpenEmpresa && onOpenEmpresa(e.id!)}
+                                            className="inline-flex items-center gap-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] px-2 py-0.5 rounded font-medium border border-slate-250 transition-all cursor-pointer"
+                                            title={`Ver ficha de ${e.nombre}`}
+                                          >
                                             🏢 {e.nombre}
-                                          </span>
+                                          </button>
                                         ))}
                                         {!empresaPrincipal && otrasEmpresas.length === 0 && (
                                           <span className="text-[10px] text-slate-400">Sin empresa vinculada</span>
