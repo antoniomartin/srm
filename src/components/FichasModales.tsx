@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  X, Save, Trash2, Tag, Plus, File, ExternalLink, Globe, Sparkles, AlertCircle, CheckCircle2, Link, MapPin, Check, Pencil, Phone
+  X, Save, Trash2, Tag, Plus, File, ExternalLink, Globe, Sparkles, AlertCircle, CheckCircle2, Link, MapPin, Check, Pencil, Phone, Mail
 } from 'lucide-react';
 import md5 from 'blueimp-md5';
 import { Empresa, Contacto, Interaccion, Documento, Relacion, PasoInteraccion, EmpresaTipo } from '../types';
@@ -113,6 +113,7 @@ interface FichasModalesProps {
   // Selection Callbacks
   onOpenContacto?: (id: string) => void;
   onOpenInteraccion?: (id: string) => void;
+  onOpenEmpresa?: (id: string) => void;
 
   // Collections
   empresas: Empresa[];
@@ -299,6 +300,18 @@ const RelacionAutocomplete: React.FC<RelacionAutocompleteProps> = ({
   );
 };
 
+const PAISES = [
+  "España", "Portugal", "Francia", "Alemania", "Italia", "Reino Unido", 
+  "Estados Unidos", "México", "Colombia", "Argentina", "Perú", "Chile", 
+  "Ecuador", "Venezuela", "Bélgica", "Países Bajos", "Suiza", "Austria", 
+  "Suecia", "Noruega", "Dinamarca", "Finlandia", "Irlanda", "Polonia", 
+  "Rumanía", "Grecia", "Turquía", "Marruecos", "Andorra", "Canadá", 
+  "Brasil", "Uruguay", "Bolivia", "Paraguay", "Panamá", "Costa Rica", 
+  "Guatemala", "Honduras", "El Salvador", "Nicaragua", "Cuba", 
+  "República Dominicana", "Puerto Rico", "China", "Japón", "Corea del Sur", 
+  "India", "Australia", "Nueva Zelanda", "Sudáfrica"
+];
+
 export const FichasModales: React.FC<FichasModalesProps> = ({
   selectedEmpresa,
   selectedContacto,
@@ -308,6 +321,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
   onCloseInteraccion,
   onOpenContacto,
   onOpenInteraccion,
+  onOpenEmpresa,
   empresas,
   contactos,
   interacciones,
@@ -390,6 +404,109 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
 
   // Tag editing state
   const [newTagInput, setNewTagInput] = useState('');
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
+
+  const allExistingTags = React.useMemo(() => {
+    const tagsSet = new Set<string>();
+    empresas.forEach(emp => {
+      if (emp.tags && Array.isArray(emp.tags)) {
+        emp.tags.forEach(tag => {
+          if (tag && tag.trim()) {
+            tagsSet.add(tag.trim());
+          }
+        });
+      }
+    });
+    return Array.from(tagsSet).sort();
+  }, [empresas]);
+
+  // Contact tags states & suggestions
+  const [newEmpresaConocidoInput, setNewEmpresaConocidoInput] = useState('');
+  const [showEmpresaConocidoSuggestions, setShowEmpresaConocidoSuggestions] = useState(false);
+
+  const [newEmpresasAnterioresInput, setNewEmpresasAnterioresInput] = useState('');
+  const [showEmpresasAnterioresSuggestions, setShowEmpresasAnterioresSuggestions] = useState(false);
+
+  const [newInteresesInput, setNewInteresesInput] = useState('');
+  const [showInteresesSuggestions, setShowInteresesSuggestions] = useState(false);
+
+  const existingEmpresaConocidoTags = React.useMemo(() => {
+    const tagsSet = new Set<string>();
+    contactos.forEach(c => {
+      if (c.empresaConocido) {
+        if (Array.isArray(c.empresaConocido)) {
+          c.empresaConocido.forEach(tag => {
+            if (tag && tag.trim()) tagsSet.add(tag.trim());
+          });
+        } else if (typeof c.empresaConocido === 'string') {
+          const trimmed = (c.empresaConocido as string).trim();
+          if (trimmed) tagsSet.add(trimmed);
+        }
+      }
+    });
+    return Array.from(tagsSet).sort();
+  }, [contactos]);
+
+  const existingEmpresasAnterioresTags = React.useMemo(() => {
+    const tagsSet = new Set<string>();
+    contactos.forEach(c => {
+      if (c.empresasAnteriores && Array.isArray(c.empresasAnteriores)) {
+        c.empresasAnteriores.forEach(tag => {
+          if (tag && tag.trim()) tagsSet.add(tag.trim());
+        });
+      }
+    });
+    return Array.from(tagsSet).sort();
+  }, [contactos]);
+
+  const existingInteresesTags = React.useMemo(() => {
+    const tagsSet = new Set<string>();
+    contactos.forEach(c => {
+      if (c.intereses && Array.isArray(c.intereses)) {
+        c.intereses.forEach(tag => {
+          if (tag && tag.trim()) tagsSet.add(tag.trim());
+        });
+      }
+    });
+    return Array.from(tagsSet).sort();
+  }, [contactos]);
+
+  const handleAddContactoTag = async (contacto: Contacto, field: 'empresaConocido' | 'empresasAnteriores' | 'intereses', tag: string) => {
+    const trimmed = tag.trim();
+    if (!trimmed) return;
+    
+    let currentTags: string[] = [];
+    const rawVal = contacto[field];
+    if (Array.isArray(rawVal)) {
+      currentTags = [...rawVal];
+    } else if (typeof rawVal === 'string' && (rawVal as string).trim()) {
+      currentTags = [(rawVal as string).trim()];
+    }
+
+    if (currentTags.map(t => t.toLowerCase()).includes(trimmed.toLowerCase())) return;
+
+    const updated = {
+      ...contacto,
+      [field]: [...currentTags, trimmed]
+    };
+    await onUpdateContacto(updated);
+  };
+
+  const handleRemoveContactoTag = async (contacto: Contacto, field: 'empresaConocido' | 'empresasAnteriores' | 'intereses', tag: string) => {
+    let currentTags: string[] = [];
+    const rawVal = contacto[field];
+    if (Array.isArray(rawVal)) {
+      currentTags = [...rawVal];
+    } else if (typeof rawVal === 'string' && (rawVal as string).trim()) {
+      currentTags = [(rawVal as string).trim()];
+    }
+
+    const updated = {
+      ...contacto,
+      [field]: currentTags.filter(t => t !== tag)
+    };
+    await onUpdateContacto(updated);
+  };
 
   // Inline forms states for direct creations from Fichas
   const [showAddContactForm, setShowAddContactForm] = useState(false);
@@ -422,6 +539,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
   });
 
   const [selectedContactoGravatarFailed, setSelectedContactoGravatarFailed] = useState(false);
+  const [showCountrySuggestions, setShowCountrySuggestions] = useState(false);
 
   const [customConfirm, setCustomConfirm] = useState<{
     isOpen: boolean;
@@ -710,12 +828,23 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Email corporativo</label>
-                  <input 
-                    type="email" 
-                    value={selectedEmpresa.email} 
-                    onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'email', e.target.value)}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
-                  />
+                  <div className="mt-1 flex gap-1">
+                    <input 
+                      type="email" 
+                      value={selectedEmpresa.email || ''} 
+                      onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'email', e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                    />
+                    {selectedEmpresa.email && selectedEmpresa.email.trim() && (
+                      <a
+                        href={`mailto:${selectedEmpresa.email.trim()}`}
+                        className="p-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 hover:text-indigo-700 rounded-lg transition-colors flex items-center justify-center cursor-pointer h-[38px] w-[38px] shrink-0"
+                        title="Enviar correo electrónico"
+                      >
+                        <Mail className="w-4 h-4" />
+                      </a>
+                    )}
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Sitio Web</label>
@@ -760,7 +889,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                     className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
                   />
                 </div>
-                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase">Dirección</label>
                     <input 
@@ -770,23 +899,72 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                       className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
                     />
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase">Código Postal</label>
+                      <input 
+                        type="text" 
+                        value={selectedEmpresa.cp || ''} 
+                        onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'cp', e.target.value)}
+                        className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase">Ciudad</label>
+                      <input 
+                        type="text" 
+                        value={selectedEmpresa.ciudad || ''} 
+                        onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'ciudad', e.target.value)}
+                        className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
+                      />
+                    </div>
+                  </div>
                   <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase">Ciudad</label>
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Provincia</label>
                     <input 
                       type="text" 
-                      value={selectedEmpresa.ciudad || ''} 
-                      onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'ciudad', e.target.value)}
+                      value={selectedEmpresa.provincia || ''} 
+                      onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'provincia', e.target.value)}
                       className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
                     />
                   </div>
-                  <div>
+                  <div className="relative">
                     <label className="block text-xs font-bold text-slate-500 uppercase">País</label>
                     <input 
                       type="text" 
                       value={selectedEmpresa.pais || ''} 
+                      onFocus={() => setShowCountrySuggestions(true)}
+                      onBlur={() => setShowCountrySuggestions(false)}
                       onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'pais', e.target.value)}
                       className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
+                      placeholder="Escribe para buscar país..."
                     />
+                    {showCountrySuggestions && (
+                      (() => {
+                        const filterText = selectedEmpresa.pais || '';
+                        const filtered = PAISES.filter(p => 
+                          p.toLowerCase().includes(filterText.toLowerCase())
+                        );
+                        if (filtered.length === 0) return null;
+                        return (
+                          <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 divide-y divide-slate-50">
+                            {filtered.map((p, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onMouseDown={() => {
+                                  handleInlineSave('empresa', selectedEmpresa.id!, 'pais', p);
+                                  setShowCountrySuggestions(false);
+                                }}
+                                className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors cursor-pointer"
+                              >
+                                {p}
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()
+                    )}
                   </div>
                 </div>
               </div>
@@ -948,20 +1126,67 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                       <button onClick={() => handleRemoveTag(selectedEmpresa, tag)} className="text-slate-400 hover:text-rose-600 font-bold ml-1">✕</button>
                     </span>
                   ))}
-                  <div className="flex items-center gap-1">
+                  <div className="relative flex items-center gap-1">
                     <input 
                       type="text" 
-                      placeholder="Nuevo tag..." 
+                      placeholder="Escribir tag..." 
                       value={newTagInput}
-                      onChange={(e) => setNewTagInput(e.target.value)}
+                      onChange={(e) => {
+                        setNewTagInput(e.target.value);
+                        setShowTagSuggestions(true);
+                      }}
+                      onFocus={() => setShowTagSuggestions(true)}
+                      onBlur={() => setTimeout(() => setShowTagSuggestions(false), 200)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
-                          handleAddTag(selectedEmpresa, newTagInput);
-                          setNewTagInput('');
+                          e.preventDefault();
+                          if (newTagInput.trim()) {
+                            handleAddTag(selectedEmpresa, newTagInput.trim());
+                            setNewTagInput('');
+                            setShowTagSuggestions(false);
+                          }
                         }
                       }}
-                      className="bg-white border border-slate-200 rounded-full px-3 py-1 text-xs outline-none focus:border-indigo-500 transition-all w-24"
+                      className="bg-white border border-slate-200 rounded-full px-3 py-1 text-xs outline-none focus:border-indigo-500 transition-all w-32 font-medium"
                     />
+                    {showTagSuggestions && newTagInput.trim() && (
+                      <div className="absolute left-0 bottom-full mb-1 min-w-[200px] bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 divide-y divide-slate-50 overflow-hidden max-h-48 overflow-y-auto">
+                        {!allExistingTags.some(t => t.toLowerCase() === newTagInput.trim().toLowerCase()) && (
+                          <button
+                            type="button"
+                            onMouseDown={() => {
+                              handleAddTag(selectedEmpresa, newTagInput.trim());
+                              setNewTagInput('');
+                              setShowTagSuggestions(false);
+                            }}
+                            className="w-full text-left px-3.5 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Crear nuevo: "{newTagInput.trim()}"</span>
+                          </button>
+                        )}
+                        {allExistingTags
+                          .filter(tag => 
+                            tag.toLowerCase().includes(newTagInput.trim().toLowerCase()) && 
+                            !selectedEmpresa.tags.includes(tag)
+                          )
+                          .map((tag, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onMouseDown={() => {
+                                handleAddTag(selectedEmpresa, tag);
+                                setNewTagInput('');
+                                setShowTagSuggestions(false);
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <Tag className="w-3 h-3 text-indigo-500" />
+                              <span>{tag}</span>
+                            </button>
+                          ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1642,6 +1867,67 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                   );
                 })()}
               </div>
+
+              {/* Consorcio / Grupo Section */}
+              {selectedEmpresa.grupo && selectedEmpresa.grupo.trim() && (() => {
+                const consorcioEmpresas = empresas.filter(e => 
+                  e.id !== selectedEmpresa.id && 
+                  e.grupo && 
+                  e.grupo.trim().toLowerCase() === selectedEmpresa.grupo.trim().toLowerCase()
+                );
+                if (consorcioEmpresas.length === 0) return null;
+                return (
+                  <div className="border-t border-slate-100 pt-5">
+                    <h4 className="font-bold text-slate-800 text-sm mb-1.5 flex items-center gap-1.5">
+                      🏢 Otras empresas en el Consorcio "{selectedEmpresa.grupo.trim()}"
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mb-3 font-normal">
+                      Empresas registradas que pertenecen al mismo grupo empresarial o consorcio. Haz clic en una para ver su ficha.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {consorcioEmpresas.map(emp => (
+                        <button
+                          key={emp.id}
+                          type="button"
+                          onClick={() => onOpenEmpresa && emp.id && onOpenEmpresa(emp.id)}
+                          className="w-full text-left p-3 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-200 rounded-xl transition-all flex items-center justify-between cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-base group-hover:scale-110 transition-transform">🏢</span>
+                            <div>
+                              <p className="text-xs font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">{emp.nombre}</p>
+                              <p className="text-[10px] text-slate-400 font-mono">{emp.ciudad || 'Sin ciudad'}, {emp.pais || 'Sin país'}</p>
+                            </div>
+                          </div>
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                            emp.estado === 'homologado' || emp.estado === 'validado'
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-150'
+                              : emp.estado === 'en_proceso'
+                              ? 'bg-indigo-50 text-indigo-700 border border-indigo-150'
+                              : 'bg-slate-50 text-slate-600 border border-slate-200'
+                          }`}>
+                            {emp.estado}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Campo de Notas */}
+              <div className="border-t border-slate-100 pt-5">
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
+                  📝 Notas Generales del Proveedor
+                </label>
+                <textarea
+                  value={selectedEmpresa.notas || ''}
+                  onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'notas', e.target.value)}
+                  placeholder="Escribe notas adicionales, acuerdos comerciales o comentarios del proveedor aquí..."
+                  rows={4}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium resize-none leading-relaxed text-slate-700 shadow-sm placeholder:text-slate-400"
+                />
+              </div>
             </div>
 
             {/* Footer */}
@@ -1782,12 +2068,23 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Email personal/profesional</label>
-                  <input 
-                    type="email" 
-                    value={selectedContacto.email} 
-                    onChange={(e) => handleInlineSave('contacto', selectedContacto.id!, 'email', e.target.value)}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
-                  />
+                  <div className="mt-1 flex gap-1">
+                    <input 
+                      type="email" 
+                      value={selectedContacto.email || ''} 
+                      onChange={(e) => handleInlineSave('contacto', selectedContacto.id!, 'email', e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
+                    />
+                    {selectedContacto.email && selectedContacto.email.trim() && (
+                      <a
+                        href={`mailto:${selectedContacto.email.trim()}`}
+                        className="p-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 hover:text-indigo-700 rounded-lg transition-colors flex items-center justify-center cursor-pointer h-[38px] w-[38px] shrink-0"
+                        title="Enviar correo electrónico"
+                      >
+                        <Mail className="w-4 h-4" />
+                      </a>
+                    )}
+                  </div>
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-xs font-bold text-slate-500 uppercase">Enlace LinkedIn (Perfil)</label>
@@ -1882,8 +2179,262 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                     value={selectedContacto.notas} 
                     onChange={(e) => handleInlineSave('contacto', selectedContacto.id!, 'notas', e.target.value)}
                     rows={3}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all resize-none"
+                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all resize-none font-medium text-slate-700"
+                    placeholder="Escribe comentarios o notas sobre este contacto..."
                   />
+                </div>
+
+                {/* Empresa donde trabajaba el usuario al conocer al contacto */}
+                <div className="md:col-span-2 border-t border-slate-100 pt-4">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
+                    💼 Empresa donde trabajaba el usuario al conocer al contacto
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 p-3 border border-slate-200 rounded-xl bg-slate-50">
+                    {(() => {
+                      const val = selectedContacto.empresaConocido;
+                      const tags = Array.isArray(val) ? val : (val && (val as string).trim() ? [(val as string).trim()] : []);
+                      return tags.map((tag, idx) => (
+                        <span key={idx} className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-750 px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm hover:border-slate-300">
+                          {tag}
+                          <button 
+                            type="button" 
+                            onClick={() => handleRemoveContactoTag(selectedContacto, 'empresaConocido', tag)} 
+                            className="text-slate-400 hover:text-rose-600 font-bold ml-1 transition-colors"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ));
+                    })()}
+                    <div className="relative flex items-center gap-1">
+                      <input 
+                        type="text" 
+                        placeholder="Escribir empresa..." 
+                        value={newEmpresaConocidoInput}
+                        onChange={(e) => {
+                          setNewEmpresaConocidoInput(e.target.value);
+                          setShowEmpresaConocidoSuggestions(true);
+                        }}
+                        onFocus={() => setShowEmpresaConocidoSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowEmpresaConocidoSuggestions(false), 200)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (newEmpresaConocidoInput.trim()) {
+                              handleAddContactoTag(selectedContacto, 'empresaConocido', newEmpresaConocidoInput.trim());
+                              setNewEmpresaConocidoInput('');
+                              setShowEmpresaConocidoSuggestions(false);
+                            }
+                          }
+                        }}
+                        className="bg-white border border-slate-200 rounded-full px-3 py-1 text-xs outline-none focus:border-indigo-500 transition-all w-36 font-medium"
+                      />
+                      {showEmpresaConocidoSuggestions && newEmpresaConocidoInput.trim() && (
+                        <div className="absolute left-0 bottom-full mb-1 min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 divide-y divide-slate-50 overflow-hidden max-h-48 overflow-y-auto">
+                          {!existingEmpresaConocidoTags.some(t => t.toLowerCase() === newEmpresaConocidoInput.trim().toLowerCase()) && (
+                            <button
+                              type="button"
+                              onMouseDown={() => {
+                                handleAddContactoTag(selectedContacto, 'empresaConocido', newEmpresaConocidoInput.trim());
+                                setNewEmpresaConocidoInput('');
+                                setShowEmpresaConocidoSuggestions(false);
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Crear nuevo: "{newEmpresaConocidoInput.trim()}"</span>
+                            </button>
+                          )}
+                          {existingEmpresaConocidoTags
+                            .filter(tag => 
+                              tag.toLowerCase().includes(newEmpresaConocidoInput.trim().toLowerCase()) && 
+                              !(Array.isArray(selectedContacto.empresaConocido) ? selectedContacto.empresaConocido : (selectedContacto.empresaConocido ? [selectedContacto.empresaConocido] : [])).includes(tag)
+                            )
+                            .map((tag, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onMouseDown={() => {
+                                  handleAddContactoTag(selectedContacto, 'empresaConocido', tag);
+                                  setNewEmpresaConocidoInput('');
+                                  setShowEmpresaConocidoSuggestions(false);
+                                }}
+                                className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                              >
+                                <Tag className="w-3 h-3 text-indigo-500" />
+                                <span>{tag}</span>
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Empresas anteriores donde trabajó el contacto */}
+                <div className="md:col-span-2 border-t border-slate-100 pt-4">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
+                    🏢 Empresas anteriores donde trabajó el contacto
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 p-3 border border-slate-200 rounded-xl bg-slate-50">
+                    {(selectedContacto.empresasAnteriores || []).map((tag, idx) => (
+                      <span key={idx} className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-750 px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm hover:border-slate-300">
+                        {tag}
+                        <button 
+                          type="button" 
+                          onClick={() => handleRemoveContactoTag(selectedContacto, 'empresasAnteriores', tag)} 
+                          className="text-slate-400 hover:text-rose-600 font-bold ml-1 transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                    <div className="relative flex items-center gap-1">
+                      <input 
+                        type="text" 
+                        placeholder="Escribir empresa..." 
+                        value={newEmpresasAnterioresInput}
+                        onChange={(e) => {
+                          setNewEmpresasAnterioresInput(e.target.value);
+                          setShowEmpresasAnterioresSuggestions(true);
+                        }}
+                        onFocus={() => setShowEmpresasAnterioresSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowEmpresasAnterioresSuggestions(false), 200)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (newEmpresasAnterioresInput.trim()) {
+                              handleAddContactoTag(selectedContacto, 'empresasAnteriores', newEmpresasAnterioresInput.trim());
+                              setNewEmpresasAnterioresInput('');
+                              setShowEmpresasAnterioresSuggestions(false);
+                            }
+                          }
+                        }}
+                        className="bg-white border border-slate-200 rounded-full px-3 py-1 text-xs outline-none focus:border-indigo-500 transition-all w-36 font-medium"
+                      />
+                      {showEmpresasAnterioresSuggestions && newEmpresasAnterioresInput.trim() && (
+                        <div className="absolute left-0 bottom-full mb-1 min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 divide-y divide-slate-50 overflow-hidden max-h-48 overflow-y-auto">
+                          {!existingEmpresasAnterioresTags.some(t => t.toLowerCase() === newEmpresasAnterioresInput.trim().toLowerCase()) && (
+                            <button
+                              type="button"
+                              onMouseDown={() => {
+                                handleAddContactoTag(selectedContacto, 'empresasAnteriores', newEmpresasAnterioresInput.trim());
+                                setNewEmpresasAnterioresInput('');
+                                setShowEmpresasAnterioresSuggestions(false);
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Crear nuevo: "{newEmpresasAnterioresInput.trim()}"</span>
+                            </button>
+                          )}
+                          {existingEmpresasAnterioresTags
+                            .filter(tag => 
+                              tag.toLowerCase().includes(newEmpresasAnterioresInput.trim().toLowerCase()) && 
+                              !(selectedContacto.empresasAnteriores || []).includes(tag)
+                            )
+                            .map((tag, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onMouseDown={() => {
+                                  handleAddContactoTag(selectedContacto, 'empresasAnteriores', tag);
+                                  setNewEmpresasAnterioresInput('');
+                                  setShowEmpresasAnterioresSuggestions(false);
+                                }}
+                                className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                              >
+                                <Tag className="w-3 h-3 text-indigo-500" />
+                                <span>{tag}</span>
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Intereses del contacto */}
+                <div className="md:col-span-2 border-t border-slate-100 pt-4">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
+                    ⚽ Intereses del contacto (Networking, hobbies, deportes, cine...)
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 p-3 border border-slate-200 rounded-xl bg-slate-50">
+                    {(selectedContacto.intereses || []).map((tag, idx) => (
+                      <span key={idx} className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-750 px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm hover:border-slate-300">
+                        {tag}
+                        <button 
+                          type="button" 
+                          onClick={() => handleRemoveContactoTag(selectedContacto, 'intereses', tag)} 
+                          className="text-slate-400 hover:text-rose-600 font-bold ml-1 transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                    <div className="relative flex items-center gap-1">
+                      <input 
+                        type="text" 
+                        placeholder="Escribir interés..." 
+                        value={newInteresesInput}
+                        onChange={(e) => {
+                          setNewInteresesInput(e.target.value);
+                          setShowInteresesSuggestions(true);
+                        }}
+                        onFocus={() => setShowInteresesSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowInteresesSuggestions(false), 200)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            if (newInteresesInput.trim()) {
+                              handleAddContactoTag(selectedContacto, 'intereses', newInteresesInput.trim());
+                              setNewInteresesInput('');
+                              setShowInteresesSuggestions(false);
+                            }
+                          }
+                        }}
+                        className="bg-white border border-slate-200 rounded-full px-3 py-1 text-xs outline-none focus:border-indigo-500 transition-all w-36 font-medium"
+                      />
+                      {showInteresesSuggestions && newInteresesInput.trim() && (
+                        <div className="absolute left-0 bottom-full mb-1 min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 divide-y divide-slate-50 overflow-hidden max-h-48 overflow-y-auto">
+                          {!existingInteresesTags.some(t => t.toLowerCase() === newInteresesInput.trim().toLowerCase()) && (
+                            <button
+                              type="button"
+                              onMouseDown={() => {
+                                handleAddContactoTag(selectedContacto, 'intereses', newInteresesInput.trim());
+                                setNewInteresesInput('');
+                                setShowInteresesSuggestions(false);
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Crear nuevo: "{newInteresesInput.trim()}"</span>
+                            </button>
+                          )}
+                          {existingInteresesTags
+                            .filter(tag => 
+                              tag.toLowerCase().includes(newInteresesInput.trim().toLowerCase()) && 
+                              !(selectedContacto.intereses || []).includes(tag)
+                            )
+                            .map((tag, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onMouseDown={() => {
+                                  handleAddContactoTag(selectedContacto, 'intereses', tag);
+                                  setNewInteresesInput('');
+                                  setShowInteresesSuggestions(false);
+                                }}
+                                className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                              >
+                                <Tag className="w-3 h-3 text-indigo-500" />
+                                <span>{tag}</span>
+                              </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {/* Empresa(s) para las que trabaja */}

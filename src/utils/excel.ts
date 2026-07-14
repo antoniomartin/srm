@@ -50,7 +50,7 @@ export const exportToExcel = (
       Estado: c.estado || 'activo',
       Intereses: (c.intereses || []).join(', '),
       EmpresasAnteriores: (c.empresasAnteriores || []).join(', '),
-      DondeSeConocio: c.empresaConocido || '',
+      DondeSeConocio: (c.empresaConocido || []).join(', '),
     };
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(contactosData), 'Contactos');

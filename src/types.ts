@@ -43,7 +43,7 @@ export interface Contacto {
   linkedin: string;
   foto?: string;
   empresasAnteriores?: string[];
-  empresaConocido?: string;
+  empresaConocido?: string[];
   intereses?: string[];
   notas: string;
   fecha_creacion: string;

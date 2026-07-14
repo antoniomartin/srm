@@ -817,6 +817,7 @@ export default function App() {
         onCloseInteraccion={() => setSelectedInterId(null)}
         onOpenContacto={(id) => setSelectedContactoId(id)}
         onOpenInteraccion={(id) => setSelectedInterId(id)}
+        onOpenEmpresa={(id) => setSelectedEmpId(id)}
         empresas={empresas}
         contactos={contactos}
         interacciones={interacciones}
