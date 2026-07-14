@@ -751,6 +751,15 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                     className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
                   />
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase">NIT (Identificación Fiscal)</label>
+                  <input 
+                    type="text" 
+                    value={selectedEmpresa.nit || ''} 
+                    onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'nit', e.target.value)}
+                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                  />
+                </div>
                 <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase">Dirección</label>
