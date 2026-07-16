@@ -42,6 +42,58 @@ function getGeminiClient() {
   }
   return aiClient;
 }
+app.post("/api/unspsc/search", async (req, res) => {
+  try {
+    const { query } = req.body;
+    const ai = getGeminiClient();
+    const systemPrompt = `Eres una base de datos inteligente de c\xF3digos UNSPSC (United Nations Standard Products and Services Code).
+Tu tarea es buscar en el cat\xE1logo completo de la clasificaci\xF3n est\xE1ndar de UNSPSC y devolver coincidencias exactas o de alta relevancia para la consulta del usuario.
+
+El usuario buscar\xE1 por palabras clave, descripci\xF3n o por un c\xF3digo parcial (p. ej. "tornillo", "3116", "consultor\xEDa", "servicio de limpieza").
+Debes devolver hasta 15 de los c\xF3digos de 8 d\xEDgitos m\xE1s relevantes del est\xE1ndar oficial UNSPSC (idealmente de nivel "Clase" o "Commodity").
+
+Debes responder estrictamente con un objeto JSON que coincida exactamente con la siguiente estructura:
+{
+  "codes": [
+    {
+      "code": "8-digit string",
+      "name": "Nombre o descripci\xF3n descriptiva en espa\xF1ol",
+      "segment": "Segmento o categor\xEDa general (ej: Manufactura, Servicios, TI, Construcci\xF3n)"
+    }
+  ]
+}
+
+Aseg\xFArate de que los c\xF3digos sean reales de la clasificaci\xF3n est\xE1ndar de UNSPSC. Si no encuentras nada relevante, devuelve una lista vac\xEDa. No incluyas texto de introducci\xF3n ni bloques de Markdown, solo el JSON puro.`;
+    const response = await ai.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: `Buscar c\xF3digos UNSPSC para la consulta: "${query || ""}"`,
+      config: {
+        systemInstruction: systemPrompt,
+        responseMimeType: "application/json",
+        temperature: 0.2
+      }
+    });
+    const text = response.text || "{}";
+    let data;
+    try {
+      data = JSON.parse(text.trim());
+    } catch (e) {
+      const match = text.match(/\{[\s\S]*\}/);
+      if (match) {
+        data = JSON.parse(match[0]);
+      } else {
+        throw e;
+      }
+    }
+    res.json(data);
+  } catch (error) {
+    console.error("UNSPSC Search Error:", error);
+    res.status(500).json({
+      error: "Error al buscar c\xF3digos UNSPSC",
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
 app.post("/api/ai-insights", async (req, res) => {
   try {
     const { entityType, name, details, history } = req.body;
