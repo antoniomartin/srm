@@ -645,8 +645,8 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
     <>
       {/* 1. Empresa Detail Overlay */}
       {selectedEmpresa && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex justify-end transition-all duration-300">
-          <div className="w-full max-w-2xl bg-white h-full shadow-2xl flex flex-col justify-between overflow-y-auto border-l border-slate-200">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 transition-all duration-300" onClick={onCloseEmpresa}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[88vh] border border-slate-200 overflow-hidden">
             {/* Header */}
             <div className="p-6 bg-slate-900 text-white flex items-start justify-between">
               <div>
@@ -1942,8 +1942,8 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
 
       {/* 2. Contacto Detail Overlay */}
       {selectedContacto && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex justify-end transition-all duration-300">
-          <div className="w-full max-w-xl bg-white h-full shadow-2xl flex flex-col justify-between overflow-y-auto border-l border-slate-200">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 transition-all duration-300" onClick={onCloseContacto}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[88vh] border border-slate-200 overflow-hidden">
             {/* Header */}
             <div className="p-6 bg-indigo-900 text-white flex items-start justify-between">
               <div className="flex items-center gap-4">
@@ -2749,8 +2749,8 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
 
       {/* 3. Interaccion Detail Overlay */}
       {selectedInteraccion && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex justify-end transition-all duration-300">
-          <div className="w-full max-w-xl bg-white h-full shadow-2xl flex flex-col justify-between overflow-y-auto border-l border-slate-200">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 transition-all duration-300" onClick={onCloseInteraccion}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[88vh] border border-slate-200 overflow-hidden">
             {/* Header */}
             <div className="p-6 bg-amber-600 text-white flex items-start justify-between">
               <div>

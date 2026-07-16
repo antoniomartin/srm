@@ -641,35 +641,39 @@ export default function App() {
           <div className="flex border-b border-slate-200 bg-slate-50/50 p-1">
             <button 
               onClick={() => { setCurrentTab('empresas'); setQuickFilter(''); }}
-              className={`flex-1 py-3 px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              className={`flex-1 py-2.5 px-2 sm:px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'empresas' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
               }`}
+              title="Empresas"
             >
-              <Building2 className="w-4 h-4" /> Empresas
+              <Building2 className="w-4 h-4" /> <span className="hidden sm:inline">Empresas</span>
             </button>
             <button 
               onClick={() => { setCurrentTab('contactos'); setQuickFilter(''); }}
-              className={`flex-1 py-3 px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              className={`flex-1 py-2.5 px-2 sm:px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'contactos' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
               }`}
+              title="Contactos"
             >
-              <Users className="w-4 h-4" /> Contactos
+              <Users className="w-4 h-4" /> <span className="hidden sm:inline">Contactos</span>
             </button>
             <button 
               onClick={() => { setCurrentTab('interacciones'); setQuickFilter(''); }}
-              className={`flex-1 py-3 px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              className={`flex-1 py-2.5 px-2 sm:px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'interacciones' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
               }`}
+              title="Interacciones"
             >
-              <MessageSquare className="w-4 h-4" /> Interacciones
+              <MessageSquare className="w-4 h-4" /> <span className="hidden sm:inline">Interacciones</span>
             </button>
             <button 
               onClick={() => { setCurrentTab('configuracion'); setQuickFilter(''); }}
-              className={`flex-1 py-3 px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              className={`flex-1 py-2.5 px-2 sm:px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'configuracion' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
               }`}
+              title="Configuración"
             >
-              <Settings className="w-4 h-4" /> Configuración
+              <Settings className="w-4 h-4" /> <span className="hidden sm:inline">Configuración</span>
             </button>
           </div>
 
