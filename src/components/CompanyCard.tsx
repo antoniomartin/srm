@@ -117,6 +117,26 @@ export const CompanyCard: React.FC<CompanyCardProps> = ({
             <span>{contactCount} contacto{contactCount !== 1 ? 's' : ''}</span>
           </p>
         </div>
+
+        {empresa.unspscCodes && empresa.unspscCodes.length > 0 && (
+          <div className="flex flex-wrap gap-1 mb-3">
+            {empresa.unspscCodes.slice(0, 2).map((item, idx) => (
+              <span
+                key={idx}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 text-[10px] font-bold truncate max-w-[160px]"
+                title={`${item.code}: ${item.name}`}
+              >
+                <span className="font-mono text-[9px] bg-indigo-100 text-indigo-800 px-1 rounded-sm">{item.code}</span>
+                <span className="truncate">{item.name}</span>
+              </span>
+            ))}
+            {empresa.unspscCodes.length > 2 && (
+              <span className="text-[10px] text-indigo-500 font-bold bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded-lg" title={empresa.unspscCodes.slice(2).map(i => `${i.code}: ${i.name}`).join(', ')}>
+                +{empresa.unspscCodes.length - 2}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="space-y-3">

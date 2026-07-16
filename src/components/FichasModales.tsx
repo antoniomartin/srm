@@ -5,10 +5,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  X, Save, Trash2, Tag, Plus, File, ExternalLink, Globe, Sparkles, AlertCircle, CheckCircle2, Link, MapPin, Check, Pencil, Phone, Mail
+  X, Save, Trash2, Tag, Plus, File, ExternalLink, Globe, Sparkles, AlertCircle, CheckCircle2, Link, MapPin, Check, Pencil, Phone, Mail, Search
 } from 'lucide-react';
 import md5 from 'blueimp-md5';
-import { Empresa, Contacto, Interaccion, Documento, Relacion, PasoInteraccion, EmpresaTipo } from '../types';
+import { Empresa, Contacto, Interaccion, Documento, Relacion, PasoInteraccion, EmpresaTipo, UNSPSC_OPTIONS, UnspscCode } from '../types';
 import { SearchSelect } from './SearchSelect';
 
 interface NodoJerarquia {
@@ -420,6 +420,70 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
     return Array.from(tagsSet).sort();
   }, [empresas]);
 
+  // UNSPSC search and manual input states
+  const [unspscSearch, setUnspscSearch] = useState('');
+  const [unspscShowDropdown, setUnspscShowDropdown] = useState(false);
+  const [showManualUnspsc, setShowManualUnspsc] = useState(false);
+  const [manualCode, setManualCode] = useState('');
+  const [manualName, setManualName] = useState('');
+  const [dynamicUnspscOptions, setDynamicUnspscOptions] = useState<UnspscCode[]>([]);
+  const [isSearchingUnspsc, setIsSearchingUnspsc] = useState(false);
+
+  const unspscDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (unspscDropdownRef.current && !unspscDropdownRef.current.contains(event.target as Node)) {
+        setUnspscShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!unspscSearch.trim()) {
+      setDynamicUnspscOptions([]);
+      return;
+    }
+
+    const delayDebounce = setTimeout(async () => {
+      setIsSearchingUnspsc(true);
+      try {
+        const response = await fetch("/api/unspsc/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: unspscSearch })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Array.isArray(data.codes)) {
+            setDynamicUnspscOptions(data.codes);
+          }
+        }
+      } catch (err) {
+        console.error("Error searching UNSPSC:", err);
+      } finally {
+        setIsSearchingUnspsc(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(delayDebounce);
+  }, [unspscSearch]);
+
+  const filteredUnspscOptions = React.useMemo(() => {
+    if (!unspscSearch.trim()) return UNSPSC_OPTIONS.slice(0, 10);
+    if (dynamicUnspscOptions.length > 0) return dynamicUnspscOptions;
+    
+    // Fallback static search
+    const searchLower = unspscSearch.toLowerCase();
+    return UNSPSC_OPTIONS.filter(
+      item => item.code.includes(searchLower) || item.name.toLowerCase().includes(searchLower)
+    );
+  }, [unspscSearch, dynamicUnspscOptions]);
+
   // Contact tags states & suggestions
   const [newEmpresaConocidoInput, setNewEmpresaConocidoInput] = useState('');
   const [showEmpresaConocidoSuggestions, setShowEmpresaConocidoSuggestions] = useState(false);
@@ -595,6 +659,24 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
     setNewInterFormCont({ asunto: '', tipo: 'reunion', fecha: new Date().toISOString().slice(0, 10), descripcion: '', estado: 'pendiente' });
   }, [selectedEmpresa?.id, selectedContacto?.id, selectedContacto?.email]);
 
+  // Performance evaluation form state
+  const [evalPlazos, setEvalPlazos] = useState(0);
+  const [evalCalidad, setEvalCalidad] = useState(0);
+  const [evalFlexibilidad, setEvalFlexibilidad] = useState(0);
+  const [evalComentarios, setEvalComentarios] = useState('');
+  const [isSavingEval, setIsSavingEval] = useState(false);
+  const [evalSaveSuccess, setEvalSaveSuccess] = useState(false);
+
+  useEffect(() => {
+    if (selectedEmpresa) {
+      setEvalPlazos(selectedEmpresa.evaluacion?.plazos || 0);
+      setEvalCalidad(selectedEmpresa.evaluacion?.calidad || 0);
+      setEvalFlexibilidad(selectedEmpresa.evaluacion?.flexibilidad || 0);
+      setEvalComentarios(selectedEmpresa.evaluacion?.comentarios || '');
+      setEvalSaveSuccess(false);
+    }
+  }, [selectedEmpresa?.id]);
+
   const handleAddTag = async (empresa: Empresa, tag: string) => {
     if (!tag.trim() || empresa.tags.includes(tag)) return;
     const updated = { ...empresa, tags: [...empresa.tags, tag] };
@@ -637,6 +719,33 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
 
   const onTagClickUpdate = async (emp: Empresa) => {
     await onUpdateEmpresa(emp);
+  };
+
+  const renderStars = (currentVal: number, setVal: (v: number) => void) => {
+    return (
+      <div className="flex items-center gap-1.5">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <button
+            key={star}
+            type="button"
+            onClick={() => setVal(star)}
+            className="text-2xl transition-all hover:scale-125 focus:outline-none cursor-pointer"
+            title={`Valorar ${star} de 5`}
+          >
+            {star <= currentVal ? (
+              <span className="text-amber-400">★</span>
+            ) : (
+              <span className="text-slate-200 hover:text-amber-300">★</span>
+            )}
+          </button>
+        ))}
+        {currentVal > 0 && (
+          <span className="text-xs font-bold text-slate-500 ml-1.5 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-mono">
+            {currentVal}/5
+          </span>
+        )}
+      </div>
+    );
   };
 
   if (!selectedEmpresa && !selectedContacto && !selectedInteraccion) return null;
@@ -688,7 +797,18 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                       : 'Prospecto'
                     }
                   </span>
-                  <span className="text-xs text-slate-400">NIT: {selectedEmpresa.nit || 'Sin NIT'}</span>
+                  {selectedEmpresa.evaluacion && selectedEmpresa.evaluacion.plazos > 0 && selectedEmpresa.evaluacion.calidad > 0 && selectedEmpresa.evaluacion.flexibilidad > 0 && (() => {
+                    const avg = (selectedEmpresa.evaluacion.plazos + selectedEmpresa.evaluacion.calidad + selectedEmpresa.evaluacion.flexibilidad) / 3;
+                    return (
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                        avg >= 4.0 ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                        avg >= 2.5 ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
+                        'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                      }`} title={`Última evaluación de desempeño: ${avg.toFixed(1)}/5.0`}>
+                        <span>⭐ KPI: {avg.toFixed(1)}/5</span>
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
               <button onClick={onCloseEmpresa} className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors">
@@ -1191,6 +1311,220 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                 </div>
               </div>
 
+              {/* Categorización UNSPSC */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
+                  📋 Categorización Estructurada UNSPSC
+                </label>
+                
+                {/* Selected UNSPSC Codes */}
+                <div className="flex flex-wrap gap-2 mb-3">
+                  {(selectedEmpresa.unspscCodes || []).length === 0 ? (
+                    <span className="text-xs text-slate-400 italic">No se han asignado códigos UNSPSC a esta empresa.</span>
+                  ) : (
+                    (selectedEmpresa.unspscCodes || []).map((item) => (
+                      <span
+                        key={item.code}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-bold"
+                      >
+                        <span className="font-mono text-[10px] bg-indigo-100 text-indigo-800 px-1 rounded">{item.code}</span>
+                        <span>{item.name}</span>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const updated = (selectedEmpresa.unspscCodes || []).filter(u => u.code !== item.code);
+                            await onUpdateEmpresa({
+                              ...selectedEmpresa,
+                              unspscCodes: updated
+                            });
+                          }}
+                          className="hover:bg-indigo-100 rounded p-0.5 text-indigo-500 hover:text-rose-600 transition-colors ml-1 cursor-pointer font-bold"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+
+                {/* Search & Add UI */}
+                <div className="relative" ref={unspscDropdownRef}>
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Buscar código UNSPSC por número o nombre (ej: 31161500, Tornillos)..."
+                        value={unspscSearch}
+                        onChange={(e) => {
+                          setUnspscSearch(e.target.value);
+                          setUnspscShowDropdown(true);
+                        }}
+                        onFocus={() => setUnspscShowDropdown(true)}
+                        className="pl-9 w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-xs focus:outline-none focus:border-indigo-500"
+                      />
+                      {unspscSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setUnspscSearch('')}
+                          className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowManualUnspsc(true);
+                      }}
+                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 font-bold text-xs rounded-lg flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Código Personalizado</span>
+                    </button>
+                  </div>
+
+                  {/* Dropdown Results */}
+                  {unspscShowDropdown && (
+                    <div className="absolute z-10 mt-1 w-full max-h-60 bg-white border border-slate-200 rounded-xl shadow-lg overflow-y-auto divide-y divide-slate-100">
+                      {isSearchingUnspsc && (
+                        <div className="p-3.5 text-xs text-slate-500 text-center flex items-center justify-center gap-2 bg-slate-50/50">
+                          <span className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
+                          <span>Buscando en catálogo global UNSPSC...</span>
+                        </div>
+                      )}
+                      {!isSearchingUnspsc && filteredUnspscOptions.length === 0 ? (
+                        <div className="p-3 text-xs text-slate-400 text-center">
+                          No se encontraron códigos preestablecidos. Prueba pulsando "Código Personalizado".
+                        </div>
+                      ) : (
+                        filteredUnspscOptions.map((item) => {
+                          const isAlreadySelected = (selectedEmpresa.unspscCodes || []).some(u => u.code === item.code);
+                          return (
+                            <button
+                              key={item.code}
+                              type="button"
+                              disabled={isAlreadySelected}
+                              onClick={async () => {
+                                const current = selectedEmpresa.unspscCodes || [];
+                                const updated = [...current, item];
+                                await onUpdateEmpresa({
+                                  ...selectedEmpresa,
+                                  unspscCodes: updated
+                                });
+                                setUnspscSearch('');
+                                setUnspscShowDropdown(false);
+                              }}
+                              className="w-full text-left px-4 py-2.5 hover:bg-slate-50 transition-colors flex items-center justify-between text-xs cursor-pointer disabled:opacity-50"
+                            >
+                              <div className="truncate pr-4 flex items-center">
+                                <span className="font-mono text-[10px] font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded mr-2 border border-slate-200">{item.code}</span>
+                                <span className="text-slate-700 font-medium truncate">{item.name}</span>
+                                {item.segment && (
+                                  <span className="text-[9px] text-indigo-600 bg-indigo-50/50 border border-indigo-100/50 px-1 rounded ml-2 shrink-0">{item.segment}</span>
+                                )}
+                              </div>
+                              {isAlreadySelected ? (
+                                <span className="text-emerald-600 font-bold text-[10px] shrink-0">✓ Añadido</span>
+                              ) : (
+                                <span className="text-indigo-600 text-[10px] font-bold shrink-0">+ Añadir</span>
+                              )}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Custom Manual UNSPSC Form */}
+                {showManualUnspsc && (
+                  <div className="mt-3 p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between border-b border-indigo-100/60 pb-1.5">
+                      <h5 className="text-[11px] font-bold text-indigo-900 uppercase">Añadir Código UNSPSC Manual</h5>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowManualUnspsc(false);
+                          setManualCode('');
+                          setManualName('');
+                        }}
+                        className="text-slate-400 hover:text-slate-600 text-[11px]"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="sm:col-span-1">
+                        <label className="block text-[9px] font-bold text-indigo-700 uppercase">Código (8 dígitos)</label>
+                        <input
+                          type="text"
+                          placeholder="Ej: 31161501"
+                          value={manualCode}
+                          onChange={(e) => setManualCode(e.target.value.replace(/\D/g, '').slice(0, 8))}
+                          className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs focus:outline-none focus:border-indigo-500 font-mono"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-[9px] font-bold text-indigo-700 uppercase">Descripción o Nombre</label>
+                        <input
+                          type="text"
+                          placeholder="Ej: Tornillos Allen de Acero"
+                          value={manualName}
+                          onChange={(e) => setManualName(e.target.value)}
+                          className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowManualUnspsc(false);
+                          setManualCode('');
+                          setManualName('');
+                        }}
+                        className="px-2.5 py-1 bg-white hover:bg-slate-50 text-slate-600 font-bold text-[10px] rounded border border-slate-200 cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (manualCode.length !== 8) {
+                            alert('El código UNSPSC debe tener exactamente 8 dígitos numéricos.');
+                            return;
+                          }
+                          if (!manualName.trim()) {
+                            alert('Por favor introduce un nombre o descripción para la clasificación.');
+                            return;
+                          }
+                          const current = selectedEmpresa.unspscCodes || [];
+                          const newItem = { code: manualCode, name: manualName.trim(), segment: "Personalizado" };
+                          const updated = [...current, newItem];
+                          await onUpdateEmpresa({
+                            ...selectedEmpresa,
+                            unspscCodes: updated
+                          });
+                          setShowManualUnspsc(false);
+                          setManualCode('');
+                          setManualName('');
+                        }}
+                        className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] rounded cursor-pointer"
+                      >
+                        Guardar Código
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
+                  El estándar UNSPSC (United Nations Standard Products and Services Code) proporciona un sistema jerárquico inequívoco para codificar y agrupar productos y servicios en compras corporativas.
+                </p>
+              </div>
+
               {/* Contact list for this company */}
               <div>
                 <h4 className="font-bold text-slate-800 text-sm border-b border-slate-100 pb-2 mb-1 flex items-center justify-between">
@@ -1456,7 +1790,15 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                                     <div className="flex items-center gap-2.5">
                                       <span className="text-lg">🚚</span>
                                       <div>
-                                        <p className="text-sm font-semibold text-slate-800">{dist.nombre}</p>
+                                        <button
+                                          type="button"
+                                          onClick={() => onOpenEmpresa && onOpenEmpresa(dist.id!)}
+                                          className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 hover:underline text-left cursor-pointer flex items-center gap-1 group"
+                                          title={`Ir a la ficha de ${dist.nombre}`}
+                                        >
+                                          <span>{dist.nombre}</span>
+                                          <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </button>
                                         <p className="text-[10px] font-mono text-slate-400">{dist.ciudad || 'Sin ciudad'}, {dist.pais || 'Sin país'}</p>
                                       </div>
                                     </div>
@@ -1573,7 +1915,15 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                                     <div className="flex items-center gap-2.5">
                                       <span className="text-lg">🏭</span>
                                       <div>
-                                        <p className="text-sm font-semibold text-slate-800">{fab.nombre}</p>
+                                        <button
+                                          type="button"
+                                          onClick={() => onOpenEmpresa && onOpenEmpresa(fab.id!)}
+                                          className="text-sm font-semibold text-indigo-600 hover:text-indigo-800 hover:underline text-left cursor-pointer flex items-center gap-1 group"
+                                          title={`Ir a la ficha de ${fab.nombre}`}
+                                        >
+                                          <span>{fab.nombre}</span>
+                                          <ExternalLink className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </button>
                                         <p className="text-[10px] font-mono text-slate-400">{fab.ciudad || 'Sin ciudad'}, {fab.pais || 'Sin país'}</p>
                                       </div>
                                     </div>
@@ -1927,6 +2277,172 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                   rows={4}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium resize-none leading-relaxed text-slate-700 shadow-sm placeholder:text-slate-400"
                 />
+              </div>
+
+              {/* Formulario de Evaluación de Desempeño (KPIs) */}
+              <div className="border-t border-slate-200 pt-5 space-y-4">
+                <div>
+                  <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                    <span>⭐ Evaluación de Desempeño y KPIs de Relación</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">
+                    Establece el rendimiento actual del proveedor para calcular su score y estado oficial en la plataforma.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  {/* Left columns - star ratings */}
+                  <div className="md:col-span-2 space-y-4 bg-slate-50/50 p-5 rounded-2xl border border-slate-200">
+                    <div className="space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <span>⏱️ Cumplimiento de plazos (OTIF)</span>
+                          </label>
+                          <span className="text-[10px] text-slate-400 italic">Puntualidad e integridad</span>
+                        </div>
+                        {renderStars(evalPlazos, setEvalPlazos)}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <span>📦 Calidad de producto/servicio</span>
+                          </label>
+                          <span className="text-[10px] text-slate-400 italic">Tasa de defectos e incidencias</span>
+                        </div>
+                        {renderStars(evalCalidad, setEvalCalidad)}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                            <span>💳 Flexibilidad y facturación</span>
+                          </label>
+                          <span className="text-[10px] text-slate-400 italic">Agilidad comercial y exactitud</span>
+                        </div>
+                        {renderStars(evalFlexibilidad, setEvalFlexibilidad)}
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-250 pt-3">
+                      <label className="block text-xs font-bold text-slate-600 uppercase mb-1.5">
+                        Comentarios / Justificación de la Evaluación
+                      </label>
+                      <textarea
+                        value={evalComentarios}
+                        onChange={(e) => setEvalComentarios(e.target.value)}
+                        placeholder="Escribe comentarios sobre auditorías, certificaciones o justificación de las puntuaciones de desempeño..."
+                        rows={2}
+                        className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none transition-all resize-none font-medium text-slate-700 placeholder:text-slate-400 shadow-sm"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Right column - Scorecard */}
+                  <div>
+                    {(() => {
+                      const isComplete = evalPlazos > 0 && evalCalidad > 0 && evalFlexibilidad > 0;
+                      const avg = isComplete ? (evalPlazos + evalCalidad + evalFlexibilidad) / 3 : 0;
+                      
+                      let scoreColorClass = 'bg-slate-50 text-slate-400 border-slate-200';
+                      let badgeLabel = 'Sin evaluar';
+                      let descText = 'Califica los 3 criterios con estrellas para activar el cálculo de score automático.';
+                      
+                      if (isComplete) {
+                        if (avg >= 4.0) {
+                          scoreColorClass = 'bg-emerald-50 border-emerald-200 text-emerald-700';
+                          badgeLabel = 'Excelente Desempeño';
+                          descText = 'Socio preferente y confiable. Cumple de forma excelente con todos los criterios de la homologación.';
+                        } else if (avg >= 2.5) {
+                          scoreColorClass = 'bg-amber-50 border-amber-200 text-amber-700';
+                          badgeLabel = 'Riesgo Medio / Observación';
+                          descText = 'Rendimiento aceptable pero mejorable. Se sugiere plan de seguimiento para evitar desvíos.';
+                        } else {
+                          scoreColorClass = 'bg-rose-50 border-rose-200 text-rose-700';
+                          badgeLabel = 'Bajo Desempeño / Crítico';
+                          descText = 'ALERTA: Proveedor no cumple las expectativas mínimas. Posible suspensión de homologación o paso a cuarentena.';
+                        }
+                      }
+
+                      return (
+                        <div className={`p-5 rounded-2xl border ${scoreColorClass} flex flex-col justify-between h-full transition-all duration-300 shadow-sm min-h-[220px]`}>
+                          <div>
+                            <span className="text-[10px] font-bold uppercase tracking-wider block opacity-75">Score de Relación</span>
+                            <div className="flex items-baseline gap-1 mt-2">
+                              <span className="text-4xl font-extrabold tracking-tight">
+                                {isComplete ? avg.toFixed(1) : '--'}
+                              </span>
+                              <span className="text-sm opacity-75 font-semibold">/ 5.0</span>
+                            </div>
+                            <div className="mt-2.5">
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-white shadow-sm uppercase tracking-wider">
+                                <span className={`w-2 h-2 rounded-full ${
+                                  !isComplete ? 'bg-slate-400' :
+                                  avg >= 4.0 ? 'bg-emerald-500' :
+                                  avg >= 2.5 ? 'bg-amber-500 animate-pulse' :
+                                  'bg-rose-500 animate-pulse'
+                                }`} />
+                                {badgeLabel}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-[11px] leading-relaxed mt-4 opacity-90 font-normal">
+                            {descText}
+                          </p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                {/* Save button and timestamps */}
+                <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+                    <span>📅</span>
+                    {selectedEmpresa.evaluacion?.ultimaActualizacion ? (
+                      <span>Última evaluación registrada: <strong className="text-slate-700">{new Date(selectedEmpresa.evaluacion.ultimaActualizacion).toLocaleString()}</strong></span>
+                    ) : (
+                      <span>Este proveedor no cuenta con evaluaciones de desempeño registradas.</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    {evalSaveSuccess && (
+                      <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1 animate-pulse">
+                        <Check className="w-4 h-4" /> ¡Guardado con éxito!
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setIsSavingEval(true);
+                        const updated = {
+                          ...selectedEmpresa,
+                          evaluacion: {
+                            plazos: evalPlazos,
+                            calidad: evalCalidad,
+                            flexibilidad: evalFlexibilidad,
+                            comentarios: evalComentarios,
+                            ultimaActualizacion: new Date().toISOString()
+                          }
+                        };
+                        await onUpdateEmpresa(updated);
+                        setIsSavingEval(false);
+                        setEvalSaveSuccess(true);
+                        setTimeout(() => setEvalSaveSuccess(false), 4000);
+                      }}
+                      disabled={isSavingEval || evalPlazos === 0 || evalCalidad === 0 || evalFlexibilidad === 0}
+                      className={`px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm ${
+                        evalPlazos === 0 || evalCalidad === 0 || evalFlexibilidad === 0
+                          ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
+                          : 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer hover:shadow hover:-translate-y-0.5'
+                      }`}
+                    >
+                      <Save className="w-4 h-4" />
+                      {isSavingEval ? 'Guardando...' : 'Guardar Evaluación de KPIs'}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 

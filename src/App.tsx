@@ -22,7 +22,7 @@ import {
 } from 'firebase/firestore';
 
 // Types & Custom Components
-import { Empresa, Contacto, Interaccion, Documento, Relacion, GrupoRelacion } from './types';
+import { Empresa, Contacto, Interaccion, Documento, Relacion, GrupoRelacion, UNSPSC_OPTIONS, UnspscCode } from './types';
 import { CompanyCard } from './components/CompanyCard';
 import { ContactCard } from './components/ContactCard';
 import { InteractionCard } from './components/InteractionCard';
@@ -61,6 +61,7 @@ export default function App() {
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [sortBy, setSortBy] = useState('nombre_asc');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedUnspsc, setSelectedUnspsc] = useState<string | null>(null);
 
   // Rapid Filter
   const [quickFilter, setQuickFilter] = useState('');
@@ -102,8 +103,91 @@ export default function App() {
 
   // Creation Forms State
   const [newCompany, setNewCompany] = useState<Partial<Empresa>>({
-    nombre: '', tipo: 'fabricante', estado: 'prospecto', nit: '', direccion: '', cp: '', ciudad: '', provincia: '', pais: 'España', telefono: '', email: '', web: ''
+    nombre: '', tipo: 'fabricante', estado: 'prospecto', nit: '', direccion: '', cp: '', ciudad: '', provincia: '', pais: 'España', telefono: '', email: '', web: '', unspscCodes: []
   });
+
+  const [newCompanyUnspscSearch, setNewCompanyUnspscSearch] = useState('');
+  const [newCompanyUnspscResults, setNewCompanyUnspscResults] = useState<UnspscCode[]>([]);
+  const [isSearchingNewCompanyUnspsc, setIsSearchingNewCompanyUnspsc] = useState(false);
+
+  useEffect(() => {
+    if (!newCompanyUnspscSearch.trim()) {
+      setNewCompanyUnspscResults([]);
+      return;
+    }
+
+    const delayDebounce = setTimeout(async () => {
+      setIsSearchingNewCompanyUnspsc(true);
+      try {
+        const response = await fetch("/api/unspsc/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: newCompanyUnspscSearch })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Array.isArray(data.codes)) {
+            setNewCompanyUnspscResults(data.codes);
+          }
+        }
+      } catch (err) {
+        console.error("Error searching UNSPSC for new company:", err);
+      } finally {
+        setIsSearchingNewCompanyUnspsc(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(delayDebounce);
+  }, [newCompanyUnspscSearch]);
+
+  const [mainUnspscSearch, setMainUnspscSearch] = useState('');
+  const [mainUnspscResults, setMainUnspscResults] = useState<UnspscCode[]>([]);
+  const [isSearchingMainUnspsc, setIsSearchingMainUnspsc] = useState(false);
+  const [showMainUnspscDropdown, setShowMainUnspscDropdown] = useState(false);
+
+  const mainUnspscDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (mainUnspscDropdownRef.current && !mainUnspscDropdownRef.current.contains(event.target as Node)) {
+        setShowMainUnspscDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!mainUnspscSearch.trim()) {
+      setMainUnspscResults([]);
+      return;
+    }
+
+    const delayDebounce = setTimeout(async () => {
+      setIsSearchingMainUnspsc(true);
+      try {
+        const response = await fetch("/api/unspsc/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: mainUnspscSearch })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Array.isArray(data.codes)) {
+            setMainUnspscResults(data.codes);
+          }
+        }
+      } catch (err) {
+        console.error("Error searching UNSPSC for main filters:", err);
+      } finally {
+        setIsSearchingMainUnspsc(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(delayDebounce);
+  }, [mainUnspscSearch]);
   const [newContacto, setNewContacto] = useState<Partial<Contacto>>({
     nombre: '', empresaId: '', cargo: '', reportaA: null, telefono: '', email: '', linkedin: '', notas: '', estado: 'activo'
   });
@@ -236,6 +320,20 @@ export default function App() {
   const scores = useMemo(() => {
     const res: { [id: string]: { nivel: 'verde' | 'amarillo' | 'rojo' | 'gris'; label: string; dias: number | null } } = {};
     empresas.forEach(emp => {
+      // Prioritize Performance Evaluation score if present
+      if (emp.evaluacion && emp.evaluacion.plazos > 0 && emp.evaluacion.calidad > 0 && emp.evaluacion.flexibilidad > 0) {
+        const avg = (emp.evaluacion.plazos + emp.evaluacion.calidad + emp.evaluacion.flexibilidad) / 3;
+        let nivel: 'verde' | 'amarillo' | 'rojo' = 'verde';
+        let label = `⭐ Eval: ${avg.toFixed(1)}/5`;
+        if (avg < 2.5) {
+          nivel = 'rojo';
+        } else if (avg < 4.0) {
+          nivel = 'amarillo';
+        }
+        res[emp.id!] = { nivel, label, dias: null };
+        return;
+      }
+
       const conts = contactos.filter(c => c.empresaId === emp.id || c.empresaIds?.includes(emp.id!));
       if (!conts.length) {
         res[emp.id!] = { nivel: 'gris', label: '⬜ Sin contactos', dias: null };
@@ -300,6 +398,9 @@ export default function App() {
     if (selectedTag) {
       list = list.filter(e => e.tags?.includes(selectedTag));
     }
+    if (selectedUnspsc) {
+      list = list.filter(e => e.unspscCodes?.some(u => u.code === selectedUnspsc));
+    }
     
     // Sort
     if (sortBy === 'nombre_asc') list.sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -308,7 +409,7 @@ export default function App() {
     if (sortBy === 'fecha_desc') list.sort((a, b) => b.fecha_creacion.localeCompare(a.fecha_creacion));
     
     return list;
-  }, [empresas, quickFilter, selectedTag, sortBy]);
+  }, [empresas, quickFilter, selectedTag, selectedUnspsc, sortBy]);
 
   const filteredContactos = useMemo(() => {
     let list = [...contactos];
@@ -391,10 +492,15 @@ export default function App() {
   const handleAddCompanySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCompany.nombre) return;
-    await saveDocument('empresas', { ...newCompany, tags: [], esTambien: [] });
+    await saveDocument('empresas', { 
+      ...newCompany, 
+      tags: [], 
+      esTambien: [],
+      unspscCodes: newCompany.unspscCodes || [] 
+    });
     setShowAddCompanyModal(false);
     setNewCompany({
-      nombre: '', tipo: 'fabricante', estado: 'prospecto', nit: '', direccion: '', cp: '', ciudad: '', provincia: '', pais: 'España', telefono: '', email: '', web: ''
+      nombre: '', tipo: 'fabricante', estado: 'prospecto', nit: '', direccion: '', cp: '', ciudad: '', provincia: '', pais: 'España', telefono: '', email: '', web: '', unspscCodes: []
     });
   };
 
@@ -704,10 +810,122 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                {currentTab === 'empresas' && (
+                  <div className="relative min-w-[200px] max-w-[260px]" ref={mainUnspscDropdownRef}>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="📋 Buscar/Filtrar por UNSPSC..."
+                        value={selectedUnspsc ? `Filtro: ${selectedUnspsc}` : mainUnspscSearch}
+                        onFocus={() => {
+                          setShowMainUnspscDropdown(true);
+                          if (selectedUnspsc) {
+                            setSelectedUnspsc(null);
+                            setMainUnspscSearch('');
+                          }
+                        }}
+                        onChange={(e) => {
+                          setMainUnspscSearch(e.target.value);
+                          setShowMainUnspscDropdown(true);
+                        }}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 pl-3 pr-8 text-xs text-slate-700 font-semibold focus:outline-none focus:bg-white focus:border-indigo-500 cursor-pointer"
+                      />
+                      {selectedUnspsc ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUnspsc(null);
+                            setMainUnspscSearch('');
+                          }}
+                          className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 font-bold text-xs"
+                        >
+                          ✕
+                        </button>
+                      ) : (
+                        <ChevronRight className="absolute right-2.5 top-2.5 w-4 h-4 text-slate-400 pointer-events-none rotate-90" />
+                      )}
+                    </div>
+
+                    {showMainUnspscDropdown && (
+                      <div className="absolute right-0 z-50 mt-1 w-72 max-h-60 bg-white border border-slate-200 rounded-xl shadow-lg overflow-y-auto divide-y divide-slate-100">
+                        <div className="p-2 bg-slate-50 flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase">
+                          <span>Resultados Catálogo UNSPSC</span>
+                          <button
+                            type="button"
+                            onClick={() => setShowMainUnspscDropdown(false)}
+                            className="text-slate-400 hover:text-slate-600 font-bold"
+                          >
+                            Cerrar ✕
+                          </button>
+                        </div>
+                        
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedUnspsc(null);
+                            setMainUnspscSearch('');
+                            setShowMainUnspscDropdown(false);
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-indigo-50/50 text-xs font-semibold text-indigo-600 transition-colors"
+                        >
+                          📋 Mostrar Todos los Códigos
+                        </button>
+
+                        {isSearchingMainUnspsc && (
+                          <div className="p-3 text-xs text-slate-500 text-center flex items-center justify-center gap-2">
+                            <span className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
+                            <span>Buscando en catálogo global...</span>
+                          </div>
+                        )}
+
+                        {!isSearchingMainUnspsc && !mainUnspscSearch.trim() && (
+                          <div className="p-1">
+                            <p className="px-3 py-1.5 text-[10px] font-medium text-slate-400">Códigos populares:</p>
+                            {UNSPSC_OPTIONS.slice(0, 10).map((item) => (
+                              <button
+                                key={item.code}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedUnspsc(item.code);
+                                  setShowMainUnspscDropdown(false);
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors flex items-center text-xs text-slate-700"
+                              >
+                                <span className="font-mono text-[9px] font-bold bg-slate-100 text-slate-600 px-1 rounded mr-2 border border-slate-200 shrink-0">{item.code}</span>
+                                <span className="truncate">{item.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {!isSearchingMainUnspsc && mainUnspscSearch.trim() && mainUnspscResults.length === 0 ? (
+                          <div className="p-3 text-xs text-slate-400 text-center">
+                            No se encontraron códigos. Intente otro término.
+                          </div>
+                        ) : (
+                          !isSearchingMainUnspsc && mainUnspscSearch.trim() && mainUnspscResults.map((item) => (
+                            <button
+                              key={item.code}
+                              type="button"
+                              onClick={() => {
+                                setSelectedUnspsc(item.code);
+                                setShowMainUnspscDropdown(false);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-50 transition-colors flex items-center text-xs text-slate-700"
+                            >
+                              <span className="font-mono text-[9px] font-bold bg-slate-100 text-slate-600 px-1 rounded mr-2 border border-slate-200 shrink-0">{item.code}</span>
+                              <span className="truncate">{item.name}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <select 
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-xs text-slate-600 font-semibold focus:outline-none focus:border-indigo-500"
+                  className="bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-xs text-slate-600 font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer"
                 >
                   <option value="nombre_asc">📝 Nombre (A-Z)</option>
                   <option value="nombre_desc">📝 Nombre (Z-A)</option>
@@ -717,9 +935,36 @@ export default function App() {
               </div>
             </div>
           )}
-
+ 
           {/* List/Grid Container */}
           <div className="p-6">
+            {currentTab === 'empresas' && (selectedTag || selectedUnspsc) && (
+              <div className="mb-4 flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs text-slate-600 font-semibold shadow-sm">
+                <span>Filtros Activos:</span>
+                {selectedUnspsc && (
+                  <span className="inline-flex items-center gap-1.5 bg-indigo-50 border border-indigo-200 text-indigo-700 px-2.5 py-1 rounded-full font-bold">
+                    📋 UNSPSC: {selectedUnspsc}
+                    <button onClick={() => setSelectedUnspsc(null)} className="hover:text-rose-600 font-bold ml-1">✕</button>
+                  </span>
+                )}
+                {selectedTag && (
+                  <span className="inline-flex items-center gap-1.5 bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-1 rounded-full font-bold">
+                    🏷️ Tag: {selectedTag}
+                    <button onClick={() => setSelectedTag(null)} className="hover:text-rose-600 font-bold ml-1">✕</button>
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    setSelectedTag(null);
+                    setSelectedUnspsc(null);
+                  }}
+                  className="text-indigo-600 hover:text-indigo-800 underline font-bold ml-auto text-[11px]"
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            )}
+
             {currentTab === 'empresas' && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {filteredEmpresas.map(emp => (
@@ -1417,6 +1662,105 @@ export default function App() {
                     onChange={(e) => setNewCompany({...newCompany, pais: e.target.value})}
                     className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm"
                   />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Clasificación UNSPSC</label>
+                
+                {/* Selected UNSPSC Codes inside newCompany */}
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {(newCompany.unspscCodes || []).length === 0 ? (
+                    <span className="text-[11px] text-slate-400 italic">No se han asignado códigos UNSPSC.</span>
+                  ) : (
+                    (newCompany.unspscCodes || []).map((item) => (
+                      <span
+                        key={item.code}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-150 text-indigo-700 text-[11px] font-bold"
+                      >
+                        <span className="font-mono text-[9px] bg-indigo-100 text-indigo-800 px-1 rounded">{item.code}</span>
+                        <span className="max-w-[120px] truncate">{item.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = (newCompany.unspscCodes || []).filter(u => u.code !== item.code);
+                            setNewCompany({ ...newCompany, unspscCodes: updated });
+                          }}
+                          className="hover:bg-indigo-150 rounded text-indigo-500 hover:text-rose-600 transition-colors ml-1 cursor-pointer font-bold"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+
+                {/* Autocomplete Input Search */}
+                <div className="relative">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por código o descripción en catálogo completo..."
+                      value={newCompanyUnspscSearch}
+                      onChange={(e) => setNewCompanyUnspscSearch(e.target.value)}
+                      className="pl-8 w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-2.5 text-xs focus:outline-none focus:border-indigo-500 focus:bg-white"
+                    />
+                    {newCompanyUnspscSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setNewCompanyUnspscSearch('')}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Dropdown containing results */}
+                  {newCompanyUnspscSearch && (
+                    <div className="absolute z-50 mt-1 w-full max-h-48 bg-white border border-slate-200 rounded-lg shadow-lg overflow-y-auto divide-y divide-slate-100">
+                      {isSearchingNewCompanyUnspsc && (
+                        <div className="p-2 text-xs text-slate-500 text-center flex items-center justify-center gap-1.5 bg-slate-50/50">
+                          <span className="w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
+                          <span>Buscando...</span>
+                        </div>
+                      )}
+                      {!isSearchingNewCompanyUnspsc && newCompanyUnspscResults.length === 0 ? (
+                        <div className="p-2 text-[11px] text-slate-400 text-center">
+                          No se encontraron coincidencias.
+                        </div>
+                      ) : (
+                        (!isSearchingNewCompanyUnspsc ? newCompanyUnspscResults : []).slice(0, 15).map((item) => {
+                          const isSelected = (newCompany.unspscCodes || []).some(u => u.code === item.code);
+                          return (
+                            <button
+                              key={item.code}
+                              type="button"
+                              onClick={() => {
+                                const current = newCompany.unspscCodes || [];
+                                const updated = isSelected
+                                  ? current.filter(u => u.code !== item.code)
+                                  : [...current, item];
+                                setNewCompany({ ...newCompany, unspscCodes: updated });
+                                setNewCompanyUnspscSearch('');
+                              }}
+                              className="w-full text-left px-3 py-1.5 hover:bg-slate-50 transition-colors flex items-center justify-between text-xs cursor-pointer"
+                            >
+                              <span className="truncate pr-2 flex items-center">
+                                <span className="font-mono text-[9px] font-bold bg-slate-100 text-slate-600 px-1 py-0.5 rounded mr-1.5 border border-slate-200 shrink-0">{item.code}</span>
+                                <span className="text-slate-700 truncate font-medium">{item.name}</span>
+                              </span>
+                              {isSelected ? (
+                                <span className="text-emerald-600 font-bold text-[10px] shrink-0">✓ Seleccionado</span>
+                              ) : (
+                                <span className="text-indigo-600 text-[10px] font-bold shrink-0">+ Añadir</span>
+                              )}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
