@@ -191,7 +191,16 @@ const RelacionAutocomplete: React.FC<RelacionAutocompleteProps> = ({
 
     // Match query
     if (!query.trim()) return true;
-    return e.nombre.toLowerCase().includes(query.toLowerCase().trim());
+    const cleanQuery = query.toLowerCase().trim();
+    return (
+      e.nombre.toLowerCase().includes(cleanQuery) ||
+      (e.nit && e.nit.toLowerCase().includes(cleanQuery)) ||
+      (e.unspscCodes || []).some(u => 
+        u.code.toLowerCase().includes(cleanQuery) || 
+        u.name.toLowerCase().includes(cleanQuery) ||
+        (u.segment && u.segment.toLowerCase().includes(cleanQuery))
+      )
+    );
   });
 
   const handleSelect = async (id: string) => {

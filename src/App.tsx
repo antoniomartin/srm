@@ -393,7 +393,15 @@ export default function App() {
     let list = [...empresas];
     const queryStr = quickFilter.toLowerCase().trim();
     if (queryStr) {
-      list = list.filter(e => e.nombre.toLowerCase().includes(queryStr) || e.nit.toLowerCase().includes(queryStr));
+      list = list.filter(e => 
+        e.nombre.toLowerCase().includes(queryStr) || 
+        (e.nit && e.nit.toLowerCase().includes(queryStr)) ||
+        (e.unspscCodes || []).some(u => 
+          u.code.toLowerCase().includes(queryStr) || 
+          u.name.toLowerCase().includes(queryStr) ||
+          (u.segment && u.segment.toLowerCase().includes(queryStr))
+        )
+      );
     }
     if (selectedTag) {
       list = list.filter(e => e.tags?.includes(selectedTag));
@@ -448,7 +456,13 @@ export default function App() {
 
     const matchedEmpresas = empresas.filter(e => 
       e.nombre.toLowerCase().includes(term) || 
-      e.tags?.some(t => t.toLowerCase().includes(term))
+      (e.nit && e.nit.toLowerCase().includes(term)) ||
+      e.tags?.some(t => t.toLowerCase().includes(term)) ||
+      (e.unspscCodes || []).some(u => 
+        u.code.toLowerCase().includes(term) || 
+        u.name.toLowerCase().includes(term) ||
+        (u.segment && u.segment.toLowerCase().includes(term))
+      )
     );
     const matchedEmpresaIds = new Set(matchedEmpresas.map(e => e.id));
 
