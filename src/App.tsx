@@ -34,6 +34,7 @@ import { FichasModales } from './components/FichasModales';
 import { SearchSelect } from './components/SearchSelect';
 import { PinLocationMapModal } from './components/PinLocationMapModal';
 import { TagManager } from './components/TagManager';
+import { Logo } from './components/Logo';
 
 // Utilities
 import { exportToExcel, parseExcelFile } from './utils/excel';
@@ -617,8 +618,8 @@ export default function App() {
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-8 border border-slate-100 flex flex-col justify-between">
           <div className="text-center mb-6">
-            <div className="w-16 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-2xl mx-auto shadow-lg shadow-indigo-200">
-              🏢
+            <div className="w-16 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center p-2.5 mx-auto shadow-lg shadow-indigo-200 text-white">
+              <Logo className="w-11 h-11" />
             </div>
             <h1 className="text-2xl font-black text-slate-800 mt-4 tracking-tight">SRM Profesional</h1>
             <p className="text-slate-500 text-sm mt-1">Gestión de Relaciones con Proveedores</p>
@@ -681,8 +682,8 @@ export default function App() {
       <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-lg shadow-md">
-              🏢
+            <div className="w-10 h-9 bg-indigo-600 rounded-xl flex items-center justify-center p-1.5 shadow-md text-white">
+              <Logo className="w-7 h-7" />
             </div>
             <div>
               <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">

@@ -675,6 +675,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
   const [evalComentarios, setEvalComentarios] = useState('');
   const [isSavingEval, setIsSavingEval] = useState(false);
   const [evalSaveSuccess, setEvalSaveSuccess] = useState(false);
+  const [estadoSeleccionado, setEstadoSeleccionado] = useState<string>('prospecto');
 
   useEffect(() => {
     if (selectedEmpresa) {
@@ -683,8 +684,9 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
       setEvalFlexibilidad(selectedEmpresa.evaluacion?.flexibilidad || 0);
       setEvalComentarios(selectedEmpresa.evaluacion?.comentarios || '');
       setEvalSaveSuccess(false);
+      setEstadoSeleccionado(selectedEmpresa.estado || 'prospecto');
     }
-  }, [selectedEmpresa?.id]);
+  }, [selectedEmpresa?.id, selectedEmpresa?.estado]);
 
   const handleAddTag = async (empresa: Empresa, tag: string) => {
     if (!tag.trim() || empresa.tags.includes(tag)) return;
@@ -896,25 +898,6 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
 
               {/* Profile Details Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2 p-4 bg-slate-50 border border-slate-200 rounded-xl">
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Estado de Homologación Oficial</label>
-                  <select
-                    value={selectedEmpresa.estado}
-                    onChange={(e) => handleInlineSave('empresa', selectedEmpresa.id!, 'estado', e.target.value as any)}
-                    className="w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm focus:border-indigo-500 outline-none font-semibold text-slate-700 transition-all shadow-sm cursor-pointer"
-                  >
-                    <option value="prospecto">🔵 Prospecto (Sin homologar)</option>
-                    <option value="en_proceso">⏳ En proceso de homologación</option>
-                    <option value="homologado">✅ Homologado oficial</option>
-                    <option value="en_cuarentena">⚠️ En cuarentena / Observación</option>
-                    <option value="no_apto">🚫 No apto / Rechazado</option>
-                    <option value="inactivo">⚫ Inactivo / De baja</option>
-                  </select>
-                  <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
-                    El estado de homologación oficial determina las condiciones comerciales y de auditoría con este proveedor.
-                  </p>
-                </div>
-
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Teléfono</label>
                   <div className="mt-1 flex gap-1">
@@ -2451,6 +2434,35 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                       {isSavingEval ? 'Guardando...' : 'Guardar Evaluación de KPIs'}
                     </button>
                   </div>
+                </div>
+              </div>
+
+              {/* Estado de Homologación Oficial al final de la ficha */}
+              <div className="border-t border-slate-200 pt-5">
+                <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm">
+                  <label className="block text-xs font-bold text-slate-700 uppercase mb-2 flex items-center gap-1.5">
+                    <span>📋 Estado de Homologación Oficial</span>
+                  </label>
+                  <select
+                    value={estadoSeleccionado}
+                    onChange={async (e) => {
+                      const nuevoEstado = e.target.value as any;
+                      setEstadoSeleccionado(nuevoEstado);
+                      await handleInlineSave('empresa', selectedEmpresa.id!, 'estado', nuevoEstado);
+                    }}
+                    className="w-full bg-white border border-slate-200 rounded-lg py-2.5 px-3 text-sm focus:border-indigo-500 outline-none font-semibold text-slate-700 transition-all shadow-sm cursor-pointer"
+                  >
+                    <option value="prospecto">🔵 Prospecto (Sin homologar)</option>
+                    <option value="en_proceso">⏳ En proceso de homologación</option>
+                    <option value="homologado">✅ Homologado oficial</option>
+                    <option value="en_cuarentena">⚠️ En cuarentena / Observación</option>
+                    <option value="no_apto">🚫 No apto / Rechazado</option>
+                    <option value="inactivo">⚫ Inactivo / De baja</option>
+                    <option value="validado">✅ Validado / Homologado</option>
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-2 leading-relaxed">
+                    El estado de homologación oficial determina las condiciones comerciales y de auditoría con este proveedor. Se selecciona por defecto el estado actual guardado en la base de datos.
+                  </p>
                 </div>
               </div>
             </div>
