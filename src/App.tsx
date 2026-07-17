@@ -6,7 +6,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Building2, Users, MessageSquare, Settings, Search, Calendar, AlertTriangle, AlertCircle,
-  LogOut, Plus, Upload, Download, RefreshCw, CheckCircle2, ChevronRight, X, Sparkles, Filter
+  LogOut, Plus, Upload, Download, RefreshCw, CheckCircle2, ChevronRight, X, Sparkles, Filter,
+  LayoutGrid, List, Clock, CheckSquare, FileText, Check, ExternalLink, Paperclip
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -66,6 +67,9 @@ export default function App() {
 
   // Rapid Filter
   const [quickFilter, setQuickFilter] = useState('');
+  const [interaccionesViewMode, setInteraccionesViewMode] = useState<'grid' | 'timeline'>('timeline');
+  const [filtroTipoInteraccion, setFiltroTipoInteraccion] = useState<string>('todos');
+  const [filtroEstadoInteraccion, setFiltroEstadoInteraccion] = useState<string>('todos');
 
   // Selected Detail States (Fichas)
   const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null);
@@ -442,13 +446,21 @@ export default function App() {
       list = list.filter(i => i.asunto.toLowerCase().includes(queryStr) || i.descripcion.toLowerCase().includes(queryStr));
     }
     
+    if (filtroTipoInteraccion !== 'todos') {
+      list = list.filter(i => i.tipo === filtroTipoInteraccion);
+    }
+    
+    if (filtroEstadoInteraccion !== 'todos') {
+      list = list.filter(i => i.estado === filtroEstadoInteraccion);
+    }
+    
     if (sortBy === 'nombre_asc') list.sort((a, b) => a.asunto.localeCompare(b.asunto));
     if (sortBy === 'nombre_desc') list.sort((a, b) => b.asunto.localeCompare(a.asunto));
     if (sortBy === 'fecha_asc') list.sort((a, b) => a.fecha.localeCompare(b.fecha));
     if (sortBy === 'fecha_desc') list.sort((a, b) => b.fecha.localeCompare(a.fecha));
     
     return list;
-  }, [interacciones, quickFilter, sortBy]);
+  }, [interacciones, quickFilter, sortBy, filtroTipoInteraccion, filtroEstadoInteraccion]);
 
   // Global search multi-faceted
   const searchResults = useMemo(() => {
@@ -607,7 +619,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-white">
         <RefreshCw className="w-12 h-12 text-indigo-500 animate-spin" />
-        <h2 className="mt-4 font-bold text-lg">Cargando SRM Profesional...</h2>
+        <h2 className="mt-4 font-bold text-lg">Cargando SRM...</h2>
       </div>
     );
   }
@@ -621,7 +633,7 @@ export default function App() {
             <div className="w-16 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center p-2.5 mx-auto shadow-lg shadow-indigo-200 text-white">
               <Logo className="w-11 h-11" />
             </div>
-            <h1 className="text-2xl font-black text-slate-800 mt-4 tracking-tight">SRM Profesional</h1>
+            <h1 className="text-2xl font-black text-slate-800 mt-4 tracking-tight">SRM</h1>
             <p className="text-slate-500 text-sm mt-1">Gestión de Relaciones con Proveedores</p>
           </div>
 
@@ -687,7 +699,7 @@ export default function App() {
             </div>
             <div>
               <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
-                SRM Profesional
+                SRM
                 <span className="text-[10px] bg-indigo-500/20 text-indigo-300 font-bold px-2 py-0.5 rounded-full border border-indigo-500/20">Aura v1.0</span>
               </h1>
               <p className="text-xs text-slate-400">Supplier Relationship Management Portal</p>
@@ -937,6 +949,36 @@ export default function App() {
                     )}
                   </div>
                 )}
+                {currentTab === 'interacciones' && (
+                  <div className="flex bg-slate-100 rounded-xl p-0.5 gap-0.5 border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setInteraccionesViewMode('timeline')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        interaccionesViewMode === 'timeline'
+                          ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50 font-extrabold'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                      title="Vista de Línea de Tiempo"
+                    >
+                      <List className="w-3.5 h-3.5" />
+                      <span className="hidden xs:inline">Cronología</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setInteraccionesViewMode('grid')}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        interaccionesViewMode === 'grid'
+                          ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50 font-extrabold'
+                          : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                      title="Vista de Tarjetas"
+                    >
+                      <LayoutGrid className="w-3.5 h-3.5" />
+                      <span className="hidden xs:inline">Tarjetas</span>
+                    </button>
+                  </div>
+                )}
                 <select 
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
@@ -1022,25 +1064,271 @@ export default function App() {
             )}
 
             {currentTab === 'interacciones' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {filteredInteracciones.map(inter => {
-                  const ids = inter.contactoIds?.length ? inter.contactoIds : (inter.contactoId ? [inter.contactoId] : []);
-                  const conts = ids.map(cid => contactos.find(c => c.id === cid)).filter(Boolean);
-                  const empName = conts.length > 0 ? empresas.find(e => e.id === conts[0].empresaId)?.nombre || '' : '';
-                  const relativeHtml = `${inter.fecha}`;
-                  const isOverdue = inter.fechaLimite ? inter.estado === 'pendiente' && new Date(inter.fechaLimite) < new Date() : false;
-                  return (
-                    <InteractionCard 
-                      key={inter.id}
-                      interaccion={inter}
-                      contactoNombres={conts.map(c => c.nombre).join(', ')}
-                      empresaNombre={empName}
-                      fechaRelativaHtml={relativeHtml}
-                      isOverdue={isOverdue}
-                      onClick={() => handleOpenInteraccion(inter.id!)}
-                    />
-                  );
-                })}
+              <div className="space-y-6">
+                {/* Quick Filters */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50 border border-slate-200/60 rounded-2xl p-4 shadow-sm">
+                  {/* Tipo de Interacción */}
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Canal de Contacto</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { key: 'todos', label: '📢 Todos' },
+                        { key: 'reunion', label: '🤝 Reuniones' },
+                        { key: 'llamada', label: '📞 Llamadas' },
+                        { key: 'email', label: '✉️ Correos' },
+                        { key: 'feria', label: '🏢 Ferias' }
+                      ].map(btn => (
+                        <button
+                          key={btn.key}
+                          type="button"
+                          onClick={() => setFiltroTipoInteraccion(btn.key)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                            filtroTipoInteraccion === btn.key
+                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                              : 'bg-white border-slate-200 text-slate-600 hover:text-slate-800 hover:border-slate-300'
+                          }`}
+                        >
+                          {btn.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Estado de Interacción */}
+                  <div className="space-y-1.5">
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Estado de Acción</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { key: 'todos', label: 'Todos' },
+                        { key: 'pendiente', label: '⏳ Pendientes' },
+                        { key: 'completada', label: '✅ Completadas' }
+                      ].map(btn => (
+                        <button
+                          key={btn.key}
+                          type="button"
+                          onClick={() => setFiltroEstadoInteraccion(btn.key)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border ${
+                            filtroEstadoInteraccion === btn.key
+                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                              : 'bg-white border-slate-200 text-slate-600 hover:text-slate-800 hover:border-slate-300'
+                          }`}
+                        >
+                          {btn.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Main Content Area: Timeline vs Grid */}
+                {interaccionesViewMode === 'grid' ? (
+                  filteredInteracciones.length === 0 ? (
+                    <div className="text-center py-12 bg-slate-50 border border-slate-150 rounded-2xl">
+                      <p className="text-sm font-semibold text-slate-500">No se encontraron interacciones para los filtros seleccionados.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {filteredInteracciones.map(inter => {
+                        const ids = inter.contactoIds?.length ? inter.contactoIds : (inter.contactoId ? [inter.contactoId] : []);
+                        const conts = ids.map(cid => contactos.find(c => c.id === cid)).filter(Boolean);
+                        const empName = conts.length > 0 ? empresas.find(e => e.id === conts[0].empresaId)?.nombre || '' : '';
+                        const relativeHtml = `${inter.fecha}`;
+                        const isOverdue = inter.fechaLimite ? inter.estado === 'pendiente' && new Date(inter.fechaLimite) < new Date() : false;
+                        return (
+                          <InteractionCard 
+                            key={inter.id}
+                            interaccion={inter}
+                            contactoNombres={conts.map(c => c.nombre).join(', ')}
+                            empresaNombre={empName}
+                            fechaRelativaHtml={relativeHtml}
+                            isOverdue={isOverdue}
+                            onClick={() => handleOpenInteraccion(inter.id!)}
+                          />
+                        );
+                      })}
+                    </div>
+                  )
+                ) : (
+                  /* Beautiful Timeline View */
+                  filteredInteracciones.length === 0 ? (
+                    <div className="text-center py-12 bg-slate-50 border border-slate-150 rounded-2xl">
+                      <p className="text-sm font-semibold text-slate-500">No se encontraron interacciones para los filtros seleccionados.</p>
+                    </div>
+                  ) : (
+                    <div className="relative border-l-2 border-indigo-100 ml-4 md:ml-8 pl-6 md:pl-10 space-y-8 py-2">
+                      {filteredInteracciones.map((inter) => {
+                        const ids = inter.contactoIds?.length ? inter.contactoIds : (inter.contactoId ? [inter.contactoId] : []);
+                        const conts = ids.map(cid => contactos.find(c => c.id === cid)).filter(Boolean);
+                        const empName = conts.length > 0 ? empresas.find(e => e.id === conts[0].empresaId)?.nombre || '' : '';
+                        const isOverdue = inter.fechaLimite ? inter.estado === 'pendiente' && new Date(inter.fechaLimite) < new Date() : false;
+                        
+                        // Get Icon & Theme
+                        let iconColor = "bg-indigo-50 border-indigo-200 text-indigo-700";
+                        let iconText = "🤝";
+                        if (inter.tipo === 'llamada') {
+                          iconColor = "bg-emerald-50 border-emerald-200 text-emerald-700";
+                          iconText = "📞";
+                        } else if (inter.tipo === 'email') {
+                          iconColor = "bg-amber-50 border-amber-200 text-amber-700";
+                          iconText = "✉️";
+                        } else if (inter.tipo === 'feria') {
+                          iconColor = "bg-purple-50 border-purple-200 text-purple-700";
+                          iconText = "🏢";
+                        }
+
+                        return (
+                          <div key={inter.id} className="relative group/item">
+                            {/* Timeline Node Point (Icon Circle) */}
+                            <div className={`absolute -left-[45px] md:-left-[53px] top-1.5 w-9 h-9 rounded-full flex items-center justify-center border shadow-sm transition-all duration-300 bg-white group-hover/item:scale-110 group-hover/item:shadow-md z-10 border-slate-200`}>
+                              <span className="text-sm">{iconText}</span>
+                            </div>
+
+                            {/* Timeline Card */}
+                            <div className={`bg-white rounded-2xl border p-5 transition-all duration-300 hover:shadow-lg hover:border-slate-300 ${
+                              isOverdue ? 'border-rose-300 shadow-sm shadow-rose-50 bg-rose-50/5' : 'border-slate-200'
+                            }`}>
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3">
+                                {/* Header Details */}
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="text-[10px] font-bold text-slate-500 bg-slate-100 rounded-md px-2 py-0.5 uppercase tracking-wider">
+                                    {inter.tipo}
+                                  </span>
+                                  
+                                  {inter.estado === 'completada' ? (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                      <CheckCircle2 className="w-3 h-3" /> Completada
+                                    </span>
+                                  ) : (
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
+                                      isOverdue ? 'bg-rose-50 text-rose-700 border-rose-200 animate-pulse' : 'bg-amber-50 text-amber-700 border-amber-200'
+                                    }`}>
+                                      <AlertCircle className="w-3 h-3" /> {isOverdue ? 'Vencida' : 'Pendiente'}
+                                    </span>
+                                  )}
+
+                                  {inter.archivo && (
+                                    <span className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 border border-indigo-150 rounded-full px-2 py-0.5 text-[10px] font-bold">
+                                      <Paperclip className="w-2.5 h-2.5" /> Adjunto
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Date */}
+                                <span className="text-xs font-semibold text-slate-500 flex items-center gap-1.5 bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1">
+                                  <Clock className="w-3.5 h-3.5" />
+                                  {new Date(inter.fecha + 'T12:00:00').toLocaleDateString('es-ES', {
+                                    day: '2-digit',
+                                    month: 'long',
+                                    year: 'numeric'
+                                  })}
+                                </span>
+                              </div>
+
+                              {/* Title / Asunto */}
+                              <h4 className="font-extrabold text-slate-800 text-base group-hover/item:text-indigo-600 transition-colors cursor-pointer mb-2" onClick={() => handleOpenInteraccion(inter.id!)}>
+                                {inter.asunto}
+                              </h4>
+
+                              {/* Sub-details (Asistentes & Empresa) */}
+                              <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs font-semibold text-slate-500 mb-4 bg-slate-50 rounded-xl p-3 border border-slate-100">
+                                <span className="flex items-center gap-1.5">
+                                  <span className="text-[10px] text-slate-400 font-bold uppercase">Asistentes:</span>
+                                  <span className="text-slate-800 font-bold">
+                                    {conts.length > 0 ? conts.map(c => c.nombre).join(', ') : 'Ninguno'}
+                                  </span>
+                                </span>
+                                {empName && (
+                                  <span className="flex items-center gap-1.5 border-l border-slate-200 pl-4">
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase">Empresa:</span>
+                                    <span className="text-indigo-600 hover:underline cursor-pointer" onClick={() => {
+                                      const cont = conts[0];
+                                      if (cont && cont.empresaId) handleOpenEmpresa(cont.empresaId);
+                                    }}>
+                                      {empName}
+                                    </span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Descripcion */}
+                              {inter.descripcion && (
+                                <p className="text-xs text-slate-600 leading-relaxed bg-white border border-slate-100 shadow-sm rounded-xl p-3.5 mb-4 whitespace-pre-line italic">
+                                  "{inter.descripcion}"
+                                </p>
+                              )}
+
+                              {/* Resolucion (if completed) */}
+                              {inter.estado === 'completada' && inter.resolucion && (
+                                <div className="bg-emerald-50/40 border border-emerald-100 rounded-xl p-3.5 text-xs mb-4">
+                                  <h5 className="font-bold text-emerald-900 uppercase tracking-wide text-[9px] mb-1">✓ Resolución y Notas de Seguimiento</h5>
+                                  <p className="text-slate-700 leading-relaxed">{inter.resolucion}</p>
+                                </div>
+                              )}
+
+                              {/* Pasos de Interacción (Checklist) if they exist */}
+                              {inter.pasos && inter.pasos.length > 0 && (
+                                <div className="mt-4 border-t border-slate-100 pt-4">
+                                  <h5 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 flex items-center gap-1">
+                                    <CheckSquare className="w-3.5 h-3.5" /> Próximas Acciones ({inter.pasos.filter(p => p.completado).length}/{inter.pasos.length})
+                                  </h5>
+                                  <div className="space-y-2">
+                                    {inter.pasos.map((paso, pIdx) => (
+                                      <div key={pIdx} className="flex items-start gap-2.5 text-xs text-slate-600">
+                                        <button
+                                          type="button"
+                                          onClick={async (e) => {
+                                            e.stopPropagation();
+                                            const updatedPasos = [...(inter.pasos || [])];
+                                            updatedPasos[pIdx] = { ...paso, completado: !paso.completado };
+                                            await saveDocument('interacciones', { ...inter, pasos: updatedPasos }, inter.id);
+                                          }}
+                                          className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 mt-0.5 cursor-pointer transition-all ${
+                                            paso.completado ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300 hover:border-indigo-400 bg-white'
+                                          }`}
+                                        >
+                                          {paso.completado && <Check className="w-3 h-3 stroke-[3]" />}
+                                        </button>
+                                        <span className={`leading-relaxed ${paso.completado ? 'line-through text-slate-400' : 'text-slate-700 font-medium'}`}>
+                                          {paso.texto}
+                                          {paso.fecha && (
+                                            <span className="text-[9px] font-bold text-slate-400 bg-slate-50 border border-slate-100 rounded-md px-1.5 py-0.5 ml-2 font-mono">
+                                              📅 {paso.fecha}
+                                            </span>
+                                          )}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Quick action button to complete the interaction if pending */}
+                              {inter.estado === 'pendiente' && (
+                                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                                  {inter.fechaLimite && (
+                                    <div className={`text-[11px] font-bold flex items-center gap-1 ${isOverdue ? 'text-rose-600' : 'text-purple-600'}`}>
+                                      ⏰ Fecha límite: {new Date(inter.fechaLimite + 'T12:00:00').toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                    </div>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenInteraccion(inter.id!);
+                                    }}
+                                    className="inline-flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3.5 py-1.5 rounded-lg text-xs font-bold border border-indigo-150 transition-all cursor-pointer ml-auto"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" /> Completar interacción
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
               </div>
             )}
 

@@ -199,7 +199,7 @@ export const generateCompanyReportPDF = (
     doc.setFontSize(7);
     doc.setTextColor(148, 163, 184); // slate-400
     doc.setFont('helvetica', 'normal');
-    doc.text(`SRM Profesional  ·  ${emp.nombre}  ·  Pág. ${p}/${totalPages}`, margen, 290);
+    doc.text(`SRM  ·  ${emp.nombre}  ·  Pág. ${p}/${totalPages}`, margen, 290);
   }
 
   doc.save(`informe_srm_${emp.nombre.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`);
