@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="indigoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1" />
+      <stop offset="100%" stop-color="#4f46e5" />
+    </linearGradient>
+    <linearGradient id="emeraldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#34d399" />
+      <stop offset="100%" stop-color="#10b981" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#4f46e5" flood-opacity="0.15" />
+    </filter>
+  </defs>
+
+  <!-- Background rounded rectangle -->
+  <rect width="512" height="512" rx="128" fill="#f8fafc" />
+  <rect width="472" height="472" x="20" y="20" rx="108" fill="url(#indigoGrad)" filter="url(#shadow)" />
+
+  <!-- Stylized modern connecting node/handshake geometric graphic -->
+  <g transform="translate(256, 256) scale(1.1)">
+    <!-- Central connecting circles -->
+    <circle cx="-50" cy="0" r="45" fill="#ffffff" opacity="0.9" />
+    <circle cx="50" cy="0" r="45" fill="url(#emeraldGrad)" />
+
+    <!-- Connecting bridges -->
+    <path d="M -50 -20 L 50 -20 L 50 20 L -50 20 Z" fill="#ffffff" opacity="0.3" />
+    <path d="M -20 -10 L 20 -10 L 20 10 L -20 10 Z" fill="url(#emeraldGrad)" />
+
+    <!-- Details/glowing dots -->
+    <circle cx="-50" cy="0" r="15" fill="#4f46e5" />
+    <circle cx="50" cy="0" r="15" fill="#ffffff" />
+    <circle cx="0" cy="0" r="10" fill="#ffffff" />
+  </g>
+
+  <!-- Title/Label text at the bottom -->
+  <text x="256" y="440" font-family="system-ui, -apple-system, sans-serif" font-weight="900" font-size="34" fill="#ffffff" letter-spacing="4" text-anchor="middle" opacity="0.9">AMM SRM</text>
+</svg>
