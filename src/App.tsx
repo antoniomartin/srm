@@ -70,6 +70,7 @@ export default function App() {
   const [interaccionesViewMode, setInteraccionesViewMode] = useState<'grid' | 'timeline'>('timeline');
   const [filtroTipoInteraccion, setFiltroTipoInteraccion] = useState<string>('todos');
   const [filtroEstadoInteraccion, setFiltroEstadoInteraccion] = useState<string>('todos');
+  const [filtroEmpresaInteraccion, setFiltroEmpresaInteraccion] = useState<string>('todos');
 
   // Selected Detail States (Fichas)
   const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null);
@@ -442,8 +443,46 @@ export default function App() {
   const filteredInteracciones = useMemo(() => {
     let list = [...interacciones];
     const queryStr = quickFilter.toLowerCase().trim();
+    
     if (queryStr) {
-      list = list.filter(i => i.asunto.toLowerCase().includes(queryStr) || i.descripcion.toLowerCase().includes(queryStr));
+      list = list.filter(i => {
+        // 1. Check in Subject or Description
+        if (i.asunto.toLowerCase().includes(queryStr) || i.descripcion.toLowerCase().includes(queryStr)) {
+          return true;
+        }
+
+        // 2. Check directly associated companies
+        if (i.empresaIds && i.empresaIds.length > 0) {
+          const directCompanyMatch = i.empresaIds.some(empId => {
+            const emp = empresas.find(e => e.id === empId);
+            return emp && emp.nombre.toLowerCase().includes(queryStr);
+          });
+          if (directCompanyMatch) return true;
+        }
+
+        // 3. Check contacts and their company names
+        if (i.contactoId) {
+          const cont = contactos.find(c => c.id === i.contactoId);
+          if (cont) {
+            if (cont.nombre.toLowerCase().includes(queryStr)) return true;
+            const emp = empresas.find(e => e.id === cont.empresaId);
+            if (emp && emp.nombre.toLowerCase().includes(queryStr)) return true;
+          }
+        }
+
+        if (i.contactoIds && i.contactoIds.length > 0) {
+          const participantMatch = i.contactoIds.some(contId => {
+            const cont = contactos.find(c => c.id === contId);
+            if (!cont) return false;
+            if (cont.nombre.toLowerCase().includes(queryStr)) return true;
+            const emp = empresas.find(e => e.id === cont.empresaId);
+            return emp && emp.nombre.toLowerCase().includes(queryStr);
+          });
+          if (participantMatch) return true;
+        }
+
+        return false;
+      });
     }
     
     if (filtroTipoInteraccion !== 'todos') {
@@ -453,6 +492,29 @@ export default function App() {
     if (filtroEstadoInteraccion !== 'todos') {
       list = list.filter(i => i.estado === filtroEstadoInteraccion);
     }
+
+    if (filtroEmpresaInteraccion !== 'todos') {
+      list = list.filter(i => {
+        // Check direct company association
+        if (i.empresaIds && i.empresaIds.includes(filtroEmpresaInteraccion)) {
+          return true;
+        }
+        // Check contact's company association
+        if (i.contactoId) {
+          const cont = contactos.find(c => c.id === i.contactoId);
+          if (cont && cont.empresaId === filtroEmpresaInteraccion) {
+            return true;
+          }
+        }
+        if (i.contactoIds && i.contactoIds.length > 0) {
+          return i.contactoIds.some(cId => {
+            const cont = contactos.find(c => c.id === cId);
+            return cont && cont.empresaId === filtroEmpresaInteraccion;
+          });
+        }
+        return false;
+      });
+    }
     
     if (sortBy === 'nombre_asc') list.sort((a, b) => a.asunto.localeCompare(b.asunto));
     if (sortBy === 'nombre_desc') list.sort((a, b) => b.asunto.localeCompare(a.asunto));
@@ -460,7 +522,7 @@ export default function App() {
     if (sortBy === 'fecha_desc') list.sort((a, b) => b.fecha.localeCompare(a.fecha));
     
     return list;
-  }, [interacciones, quickFilter, sortBy, filtroTipoInteraccion, filtroEstadoInteraccion]);
+  }, [interacciones, quickFilter, sortBy, filtroTipoInteraccion, filtroEstadoInteraccion, filtroEmpresaInteraccion, empresas, contactos]);
 
   // Global search multi-faceted
   const searchResults = useMemo(() => {
@@ -1117,6 +1179,21 @@ export default function App() {
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Empresa / Proveedor */}
+                  <div className="space-y-1.5 min-w-[200px]">
+                    <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider block">Empresa / Proveedor</span>
+                    <select
+                      value={filtroEmpresaInteraccion}
+                      onChange={(e) => setFiltroEmpresaInteraccion(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl py-1.5 px-3 text-xs font-bold text-slate-600 outline-none hover:border-slate-300 transition-all cursor-pointer"
+                    >
+                      <option value="todos">🏢 Todas las empresas</option>
+                      {empresas.map(emp => (
+                        <option key={emp.id} value={emp.id!}>{emp.nombre}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 

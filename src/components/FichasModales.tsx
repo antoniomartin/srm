@@ -321,6 +321,15 @@ const PAISES = [
   "India", "Australia", "Nueva Zelanda", "Sudáfrica"
 ];
 
+const obtenerFechaLimiteDefecto = (pasos?: PasoInteraccion[]) => {
+  if (!pasos || pasos.length === 0) return '';
+  const fechas = pasos
+    .map(p => p.fecha)
+    .filter((f): f is string => typeof f === 'string' && f.trim() !== '');
+  if (fechas.length === 0) return '';
+  return fechas.reduce((max, current) => current > max ? current : max, fechas[0]);
+};
+
 export const FichasModales: React.FC<FichasModalesProps> = ({
   selectedEmpresa,
   selectedContacto,
@@ -360,6 +369,28 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
   const [editingPasoIndex, setEditingPasoIndex] = useState<number | null>(null);
   const [editingPasoText, setEditingPasoText] = useState('');
   const [editingPasoDate, setEditingPasoDate] = useState('');
+
+  const actualizarPasosYFechaLimite = (nuevosPasos: PasoInteraccion[]) => {
+    if (!selectedInteraccion) return;
+    const oldMaxDate = obtenerFechaLimiteDefecto(selectedInteraccion.pasos || []);
+    const newMaxDate = obtenerFechaLimiteDefecto(nuevosPasos);
+    
+    const currentFechaLimite = selectedInteraccion.fechaLimite;
+    
+    // If current deadline is empty, or equals the old default, update it to the new default
+    let nuevaFechaLimite = currentFechaLimite;
+    if (!currentFechaLimite || currentFechaLimite === oldMaxDate) {
+      nuevaFechaLimite = newMaxDate || null;
+    }
+    
+    const updated = {
+      ...selectedInteraccion,
+      pasos: nuevosPasos,
+      fechaLimite: nuevaFechaLimite
+    };
+    
+    onUpdateInteraccion(updated);
+  };
 
   // Drag and drop attachment state
   const [dragActive, setDragDropActive] = useState(false);
@@ -3334,8 +3365,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                   <textarea 
                     value={selectedInteraccion.descripcion} 
                     onChange={(e) => {
-                      selectedInteraccion.descripcion = e.target.value;
-                      onUpdateInteraccion(selectedInteraccion);
+                      onUpdateInteraccion({ ...selectedInteraccion, descripcion: e.target.value });
                     }}
                     rows={4}
                     className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
@@ -3343,12 +3373,44 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                 </div>
 
                 <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase">⏰ Fecha Límite de Resolución</label>
+                  <div className="mt-1 flex gap-2">
+                    <input 
+                      type="date"
+                      value={selectedInteraccion.fechaLimite || ''}
+                      onChange={(e) => {
+                        const val = e.target.value || null;
+                        onUpdateInteraccion({ ...selectedInteraccion, fechaLimite: val });
+                      }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
+                    />
+                    {selectedInteraccion.pasos && selectedInteraccion.pasos.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const defDate = obtenerFechaLimiteDefecto(selectedInteraccion.pasos);
+                          if (defDate) {
+                            onUpdateInteraccion({ ...selectedInteraccion, fechaLimite: defDate });
+                          }
+                        }}
+                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-150 transition-colors shrink-0 cursor-pointer"
+                        title="Sincronizar con el plazo más largo de los pasos o compromisos"
+                      >
+                        Calcular de Pasos
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1 font-medium">
+                    Por defecto se sincroniza al plazo más largo de los pasos o compromisos. Puedes cambiarla libremente.
+                  </p>
+                </div>
+
+                <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Resolución / Conclusión final</label>
                   <textarea 
                     value={selectedInteraccion.resolucion || ''} 
                     onChange={(e) => {
-                      selectedInteraccion.resolucion = e.target.value;
-                      onUpdateInteraccion(selectedInteraccion);
+                      onUpdateInteraccion({ ...selectedInteraccion, resolucion: e.target.value });
                     }}
                     rows={2}
                     placeholder="Borrador de resolución..."
@@ -3554,8 +3616,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                                     texto: editingPasoText.trim(), 
                                     fecha: editingPasoDate 
                                   };
-                                  selectedInteraccion.pasos = updatedPasos;
-                                  onUpdateInteraccion(selectedInteraccion);
+                                  actualizarPasosYFechaLimite(updatedPasos);
                                   setEditingPasoIndex(null);
                                 }
                               }}
@@ -3581,8 +3642,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                                 onChange={(e) => {
                                   const updatedPasos = [...(selectedInteraccion.pasos || [])];
                                   updatedPasos[idx] = { ...paso, completado: e.target.checked };
-                                  selectedInteraccion.pasos = updatedPasos;
-                                  onUpdateInteraccion(selectedInteraccion);
+                                  actualizarPasosYFechaLimite(updatedPasos);
                                 }}
                                 className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
                               />
@@ -3612,8 +3672,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                                     `¿Estás seguro de que deseas eliminar este paso o compromiso: "${paso.texto}"?`,
                                     () => {
                                       const updatedPasos = (selectedInteraccion.pasos || []).filter((_, i) => i !== idx);
-                                      selectedInteraccion.pasos = updatedPasos;
-                                      onUpdateInteraccion(selectedInteraccion);
+                                      actualizarPasosYFechaLimite(updatedPasos);
                                     },
                                     true,
                                     "Eliminar Paso"
@@ -3651,8 +3710,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                           if (txtInput && txtInput.value.trim()) {
                             const steps = [...(selectedInteraccion.pasos || [])];
                             steps.push({ texto: txtInput.value.trim(), fecha: dateInput.value, completado: false });
-                            selectedInteraccion.pasos = steps;
-                            onUpdateInteraccion(selectedInteraccion);
+                            actualizarPasosYFechaLimite(steps);
                             txtInput.value = '';
                           }
                         }}
@@ -3670,8 +3728,8 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
             <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
               <button 
                 onClick={() => {
-                  selectedInteraccion.estado = selectedInteraccion.estado === 'pendiente' ? 'completada' : 'pendiente';
-                  onUpdateInteraccion(selectedInteraccion);
+                  const nuevoEstado = selectedInteraccion.estado === 'pendiente' ? 'completada' : 'pendiente';
+                  onUpdateInteraccion({ ...selectedInteraccion, estado: nuevoEstado });
                 }}
                 className={`px-4 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
                   selectedInteraccion.estado === 'completada'
