@@ -370,6 +370,46 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
   const [editingPasoText, setEditingPasoText] = useState('');
   const [editingPasoDate, setEditingPasoDate] = useState('');
 
+  // Local buffering for textareas to prevent typing lag / Firestore race conditions
+  const [localDescripcion, setLocalDescripcion] = useState('');
+  const [localResolucion, setLocalResolucion] = useState('');
+
+  useEffect(() => {
+    if (selectedInteraccion) {
+      setLocalDescripcion(selectedInteraccion.descripcion || '');
+      setLocalResolucion(selectedInteraccion.resolucion || '');
+    } else {
+      setLocalDescripcion('');
+      setLocalResolucion('');
+    }
+  }, [selectedInteraccion?.id]);
+
+  const actualizarInteraccion = (campos: Partial<Interaccion>) => {
+    if (!selectedInteraccion) return;
+    onUpdateInteraccion({
+      ...selectedInteraccion,
+      ...campos,
+      // Merge local values so we don't overwrite with old values during on-the-fly modifications
+      descripcion: localDescripcion,
+      resolucion: localResolucion
+    });
+  };
+
+  const handleCloseInteraccionConGuardado = () => {
+    if (selectedInteraccion) {
+      const isDescChanged = localDescripcion !== selectedInteraccion.descripcion;
+      const isResChanged = localResolucion !== (selectedInteraccion.resolucion || '');
+      if (isDescChanged || isResChanged) {
+        onUpdateInteraccion({
+          ...selectedInteraccion,
+          descripcion: localDescripcion,
+          resolucion: localResolucion
+        });
+      }
+    }
+    onCloseInteraccion();
+  };
+
   const actualizarPasosYFechaLimite = (nuevosPasos: PasoInteraccion[]) => {
     if (!selectedInteraccion) return;
     const oldMaxDate = obtenerFechaLimiteDefecto(selectedInteraccion.pasos || []);
@@ -383,13 +423,10 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
       nuevaFechaLimite = newMaxDate || null;
     }
     
-    const updated = {
-      ...selectedInteraccion,
+    actualizarInteraccion({
       pasos: nuevosPasos,
       fechaLimite: nuevaFechaLimite
-    };
-    
-    onUpdateInteraccion(updated);
+    });
   };
 
   // Drag and drop attachment state
@@ -3317,7 +3354,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
 
       {/* 3. Interaccion Detail Overlay */}
       {selectedInteraccion && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 transition-all duration-300" onClick={onCloseInteraccion}>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 transition-all duration-300" onClick={handleCloseInteraccionConGuardado}>
           <div onClick={(e) => e.stopPropagation()} className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[88vh] border border-slate-200 overflow-hidden">
             {/* Header */}
             <div className="p-6 bg-amber-600 text-white flex items-start justify-between">
@@ -3333,7 +3370,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                   <span className="text-xs text-amber-100">Fecha: {selectedInteraccion.fecha}</span>
                 </div>
               </div>
-              <button onClick={onCloseInteraccion} className="p-2 text-amber-100 hover:text-white rounded-lg hover:bg-amber-700 transition-colors">
+              <button onClick={handleCloseInteraccionConGuardado} className="p-2 text-amber-100 hover:text-white rounded-lg hover:bg-amber-700 transition-colors">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -3363,9 +3400,12 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Detalle o Minuta de la Interacción</label>
                   <textarea 
-                    value={selectedInteraccion.descripcion} 
-                    onChange={(e) => {
-                      onUpdateInteraccion({ ...selectedInteraccion, descripcion: e.target.value });
+                    value={localDescripcion} 
+                    onChange={(e) => setLocalDescripcion(e.target.value)}
+                    onBlur={() => {
+                      if (selectedInteraccion && localDescripcion !== selectedInteraccion.descripcion) {
+                        actualizarInteraccion({ descripcion: localDescripcion });
+                      }
                     }}
                     rows={4}
                     className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
@@ -3380,7 +3420,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                       value={selectedInteraccion.fechaLimite || ''}
                       onChange={(e) => {
                         const val = e.target.value || null;
-                        onUpdateInteraccion({ ...selectedInteraccion, fechaLimite: val });
+                        actualizarInteraccion({ fechaLimite: val });
                       }}
                       className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
                     />
@@ -3390,7 +3430,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                         onClick={() => {
                           const defDate = obtenerFechaLimiteDefecto(selectedInteraccion.pasos);
                           if (defDate) {
-                            onUpdateInteraccion({ ...selectedInteraccion, fechaLimite: defDate });
+                            actualizarInteraccion({ fechaLimite: defDate });
                           }
                         }}
                         className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-lg border border-indigo-150 transition-colors shrink-0 cursor-pointer"
@@ -3408,9 +3448,12 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
                 <div>
                   <label className="block text-xs font-bold text-slate-500 uppercase">Resolución / Conclusión final</label>
                   <textarea 
-                    value={selectedInteraccion.resolucion || ''} 
-                    onChange={(e) => {
-                      onUpdateInteraccion({ ...selectedInteraccion, resolucion: e.target.value });
+                    value={localResolucion} 
+                    onChange={(e) => setLocalResolucion(e.target.value)}
+                    onBlur={() => {
+                      if (selectedInteraccion && localResolucion !== (selectedInteraccion.resolucion || '')) {
+                        actualizarInteraccion({ resolucion: localResolucion });
+                      }
                     }}
                     rows={2}
                     placeholder="Borrador de resolución..."
@@ -3729,7 +3772,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
               <button 
                 onClick={() => {
                   const nuevoEstado = selectedInteraccion.estado === 'pendiente' ? 'completada' : 'pendiente';
-                  onUpdateInteraccion({ ...selectedInteraccion, estado: nuevoEstado });
+                  actualizarInteraccion({ estado: nuevoEstado });
                 }}
                 className={`px-4 py-2 text-xs font-bold rounded-lg border transition-all cursor-pointer ${
                   selectedInteraccion.estado === 'completada'
@@ -3739,7 +3782,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
               >
                 {selectedInteraccion.estado === 'completada' ? 'Reabrir como Pendiente' : '✓ Completar Interacción'}
               </button>
-              <button onClick={onCloseInteraccion} className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors shadow-sm text-sm cursor-pointer">
+              <button onClick={handleCloseInteraccionConGuardado} className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors shadow-sm text-sm cursor-pointer">
                 Cerrar
               </button>
             </div>
