@@ -24,6 +24,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 // server.ts
 var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
+var import_fs = __toESM(require("fs"), 1);
 var import_vite = require("vite");
 var import_genai = require("@google/genai");
 var import_dotenv = __toESM(require("dotenv"), 1);
@@ -31,16 +32,22 @@ import_dotenv.default.config();
 var app = (0, import_express.default)();
 var PORT = 3e3;
 app.use(import_express.default.json({ limit: "10mb" }));
-var aiClient = null;
-function getGeminiClient() {
-  if (!aiClient) {
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error("GEMINI_API_KEY environment variable is not defined");
-    }
-    aiClient = new import_genai.GoogleGenAI({ apiKey });
+var serverCustomApiKey = "";
+var initialEnvKey = (process.env.GEMINI_API_KEY || "").trim();
+if (initialEnvKey && initialEnvKey !== "MY_GEMINI_API_KEY") {
+  serverCustomApiKey = initialEnvKey;
+}
+function getGeminiClient(explicitKey) {
+  const apiKey = (explicitKey || serverCustomApiKey || process.env.GEMINI_API_KEY || "").trim();
+  if (!apiKey || apiKey === "MY_GEMINI_API_KEY" || apiKey === "undefined" || apiKey === "null") {
+    return null;
   }
-  return aiClient;
+  try {
+    return new import_genai.GoogleGenAI({ apiKey });
+  } catch (err) {
+    console.warn("Error creating GoogleGenAI instance:", err);
+    return null;
+  }
 }
 var FALLBACK_UNSPSC = [
   // 30: Materiales Estructurales y Construcción
@@ -147,11 +154,183 @@ function getLocalFallbackSearch(query) {
   });
   return { codes: results.slice(0, 15) };
 }
+function generateLocalSRMInsights(entityType, name, details = {}, history = []) {
+  const isEmpresa = entityType === "empresa";
+  const now = /* @__PURE__ */ new Date();
+  const sortedHistory = [...history || []].sort((a, b) => {
+    const dateA = new Date(a.date || a.fecha || 0).getTime();
+    const dateB = new Date(b.date || b.fecha || 0).getTime();
+    return dateB - dateA;
+  });
+  const totalInteractions = sortedHistory.length;
+  let lastContactDate = null;
+  let daysSinceLastContact = null;
+  if (totalInteractions > 0 && sortedHistory[0].date) {
+    const parsed = new Date(sortedHistory[0].date);
+    if (!isNaN(parsed.getTime())) {
+      lastContactDate = parsed;
+      daysSinceLastContact = Math.max(0, Math.floor((now.getTime() - lastContactDate.getTime()) / (1e3 * 60 * 60 * 24)));
+    }
+  }
+  const interactionTypes = {};
+  sortedHistory.forEach((item) => {
+    const t = (item.type || item.tipo || "comunicaci\xF3n").toLowerCase();
+    interactionTypes[t] = (interactionTypes[t] || 0) + 1;
+  });
+  let healthScore = 70;
+  const rating = Number(details.calificacion || details.rating || 3);
+  healthScore += (rating - 3) * 10;
+  const estado = String(details.estado || "activo").toLowerCase();
+  if (estado === "activo" || estado === "homologado") healthScore += 10;
+  else if (estado === "en_revision" || estado === "pendiente" || estado === "prospecto") healthScore += 0;
+  else if (estado === "inactivo" || estado === "bloqueado") healthScore -= 25;
+  if (daysSinceLastContact !== null) {
+    if (daysSinceLastContact <= 30) healthScore += 10;
+    else if (daysSinceLastContact > 90) healthScore -= 15;
+  } else {
+    healthScore -= 10;
+  }
+  healthScore = Math.max(10, Math.min(100, healthScore));
+  let stars = "\u2B50\u2B50\u2B50\u2606\u2606";
+  if (rating >= 5) stars = "\u2B50\u2B50\u2B50\u2B50\u2B50";
+  else if (rating >= 4) stars = "\u2B50\u2B50\u2B50\u2B50\u2606";
+  else if (rating >= 3) stars = "\u2B50\u2B50\u2B50\u2606\u2606";
+  else if (rating >= 2) stars = "\u2B50\u2B50\u2606\u2606\u2606";
+  else stars = "\u2B50\u2606\u2606\u2606\u2606";
+  if (isEmpresa) {
+    const sector = details.sector || details.categoria || details.tipo || "Sector Comercial / Industrial";
+    const ciudad = details.ciudad || details.provincia || "Espa\xF1a";
+    const cif = details.cif || details.nit || "No especificado";
+    const unspscCodes = details.codigosUNSPSC || details.unspsc || [];
+    const certs = details.certificaciones || [];
+    const paymentTerms = details.condicionesPago || "30/60 d\xEDas fecha factura";
+    return `### \u{1F3E2} 1. Resumen de Perfil Ejecutivo
+- **Proveedor**: **${name}** (${sector} \u2014 ${ciudad})
+- **Identificador Fiscal**: \`${cif}\`
+- **\xCDndice de Salud SRM**: **${healthScore}/100** (${healthScore >= 75 ? "\u{1F7E2} \xD3ptimo / Alta Confianza" : healthScore >= 50 ? "\u{1F7E1} Estable / Supervisi\xF3n Habitual" : "\u{1F534} En Riesgo / Requiere Atenci\xF3n Inmediata"})
+- **Calificaci\xF3n del Proveedor**: ${stars} (${rating}/5)
+- **Estado Operativo**: \`${estado.toUpperCase()}\`
+- **Condiciones Comerciales**: ${paymentTerms}
+${certs.length > 0 ? `- **Certificaciones Registradas**: ${certs.join(", ")}` : ""}
+${unspscCodes.length > 0 ? `- **Familias UNSPSC Vinculadas**: ${unspscCodes.slice(0, 3).join(", ")}` : ""}
+
+### \u{1F91D} 2. An\xE1lisis de Relaci\xF3n y Engagement
+- **Interacciones Registradas**: **${totalInteractions}** eventos en el sistema.
+${lastContactDate ? `- **\xDAltimo Contacto**: Hace **${daysSinceLastContact} d\xEDas** (${lastContactDate.toLocaleDateString("es-ES")}).` : `- **\xDAltimo Contacto**: *Sin interacciones previas registradas.*`}
+- **Desglose de Comunicaciones**: ${Object.entries(interactionTypes).map(([k, v]) => `**${k}**: ${v}`).join(" | ") || "Ninguna registrada"}
+- **Diagn\xF3stico de Cadencia**: ${daysSinceLastContact === null ? "\u26A0\uFE0F *Sin historial*: Conviene agendar una primera reuni\xF3n de presentaci\xF3n o formalizaci\xF3n de cat\xE1logo." : daysSinceLastContact > 60 ? "\u26A0\uFE0F *Desconexi\xF3n detectada*: Han transcurrido m\xE1s de 60 d\xEDas sin actividad directa. Se aconseja reactivar contacto para validar disponibilidad y tarifas." : "\u2705 *Cadencia activa*: La relaci\xF3n mantiene un flujo constante y adecuado para la prevenci\xF3n de incidencias y control de plazos."}
+
+### \u{1F3AF} 3. Recomendaciones Estrat\xE9gicas de Acci\xF3n
+1. **${daysSinceLastContact === null || daysSinceLastContact > 45 ? "Planificar Reuni\xF3n de Coordinaci\xF3n" : "Revisi\xF3n Peri\xF3dica de Acuerdos"}**: Agendar una sesi\xF3n breve con el interlocutor comercial para validar condiciones vigentes, plazos de entrega y requerimientos del pr\xF3ximo trimestre.
+2. **${rating < 3.5 ? "Plan de Homologaci\xF3n y Calidad" : "Consolidaci\xF3n de Proveedor Estrat\xE9gico"}**: ${rating < 3.5 ? "Identificar motivos de valoraci\xF3n media/baja y solicitar un plan de acciones correctivas." : "Explorar acuerdos marco a largo plazo o rappel por volumen acumulado para optimizar el gasto de compras."}
+3. **Gesti\xF3n Documental y Cumplimiento**: Comprobar la vigencia de fichas t\xE9cnicas, certificados de calidad y coberturas legales antes de la emisi\xF3n de nuevos pedidos.
+
+### \u2709\uFE0F 4. Plantilla de Comunicaci\xF3n Personalizada
+**Asunto**: *Seguimiento operativo y actualizaci\xF3n de acuerdos comerciales \u2014 SRM*
+
+*Estimado equipo de ${name},*
+
+Esperamos que se encuentren muy bien. Nos ponemos en contacto desde el Departamento de Compras con motivo del seguimiento y gesti\xF3n peri\xF3dica de nuestros proveedores clave.
+
+Nos gustar\xEDa coordinar una breve reuni\xF3n o llamada de seguimiento en los pr\xF3ximos d\xEDas con el objetivo de:
+- Revisar el estado de nuestras \xF3rdenes de compra y niveles de servicio recientes.
+- Actualizar el cat\xE1logo de referencias y condiciones comerciales para el periodo entrante.
+- Garantizar que toda la documentaci\xF3n t\xE9cnica y de homologaci\xF3n se encuentre debidamente al d\xEDa.
+
+\xBFQu\xE9 d\xEDa y franja horaria les resultar\xEDa m\xE1s conveniente la pr\xF3xima semana para una breve llamada?
+
+Agradecemos de antemano su colaboraci\xF3n y compromiso.
+
+*Atentamente,*  
+**Equipo de Gesti\xF3n de Proveedores (SRM)**`;
+  } else {
+    const cargo = details.cargo || details.puesto || "Contacto Comercial";
+    const email = details.email || "correo@proveedor.com";
+    const tel = details.telefono || details.movil || "No registrado";
+    const dep = details.departamento || "Comercial / Ventas";
+    return `### \u{1F464} 1. Perfil Inteligente del Contacto
+- **Nombre**: **${name}**
+- **Cargo / Rol**: **${cargo}** (${dep})
+- **Datos de Contacto**: Email: \`${email}\` | Tel\xE9fono: \`${tel}\`
+- **\xCDndice de Actividad**: **${healthScore}/100**
+${details.esPrincipal ? "- **Rol Estrat\xE9gico**: \u2B50 **Interlocutor Principal / Decisor Clave**" : ""}
+
+### \u{1F4AC} 2. An\xE1lisis del Historial de Interacciones
+- **Interacciones Registradas**: **${totalInteractions}** eventos con este contacto.
+${lastContactDate ? `- **\xDAltimo Intercambio**: Hace **${daysSinceLastContact} d\xEDas** (${lastContactDate.toLocaleDateString("es-ES")}).` : `- **\xDAltimo Intercambio**: *A\xFAn no se han registrado eventos directos con este contacto.*`}
+- **Canales m\xE1s frecuentes**: ${Object.entries(interactionTypes).map(([k, v]) => `**${k}**: ${v}`).join(", ") || "Pendiente de inicio"}
+
+### \u{1F680} 3. Recomendaciones de Seguimiento
+1. **${daysSinceLastContact === null || daysSinceLastContact > 30 ? "Reanudar Comunicaci\xF3n Directa" : "Mantener Seguimiento Fluido"}**: Enviar un mensaje breve de cortes\xEDa para dar seguimiento a las \xFAltimas gestiones y confirmar disponibilidad.
+2. **Consolidaci\xF3n de Rol**: Registrar a este contacto como referente para pedidos urgentes, escalado de incidencias o consultas t\xE9cnicas espec\xEDficas.
+
+### \u2709\uFE0F 4. Plantilla de Correo Personalizada
+**Asunto**: *Seguimiento comercial / Coordinaci\xF3n de necesidades \u2014 SRM*
+
+*Hola ${name.split(" ")[0] || name},*
+
+Espero que est\xE9s teniendo una excelente semana.
+
+Te escribo para dar seguimiento a nuestras conversaciones recientes y coordinar conjuntamente las necesidades y solicitudes de suministro que tenemos previstas para las pr\xF3ximas semanas.
+
+\xBFTendr\xEDas disponibilidad para una breve llamada de 10 minutos entre ma\xF1ana o pasado para alinearnos?
+
+Quedo a la espera de tus comentarios. \xA1Muchas gracias!
+
+*Un cordial saludo,*  
+**Gesti\xF3n de Compras y Proveedores**`;
+  }
+}
+app.get("/api/ai/status", (req, res) => {
+  const envKey = (process.env.GEMINI_API_KEY || "").trim();
+  const hasEnvKey = Boolean(envKey && envKey !== "MY_GEMINI_API_KEY");
+  const hasCustomKey = Boolean(serverCustomApiKey);
+  res.json({
+    configured: hasEnvKey || hasCustomKey,
+    source: hasCustomKey ? "custom" : hasEnvKey ? "env" : "local_engine",
+    model: "gemini-2.5-flash",
+    fallbackAvailable: true
+  });
+});
+app.post("/api/ai/config", (req, res) => {
+  const { apiKey } = req.body;
+  if (typeof apiKey === "string") {
+    serverCustomApiKey = apiKey.trim();
+    if (serverCustomApiKey) {
+      process.env.GEMINI_API_KEY = serverCustomApiKey;
+      try {
+        const envPath = import_path.default.join(process.cwd(), ".env");
+        let envContent = "";
+        if (import_fs.default.existsSync(envPath)) {
+          envContent = import_fs.default.readFileSync(envPath, "utf-8");
+        }
+        if (envContent.includes("GEMINI_API_KEY=")) {
+          envContent = envContent.replace(/GEMINI_API_KEY=.*/, `GEMINI_API_KEY="${serverCustomApiKey}"`);
+        } else {
+          envContent += `
+GEMINI_API_KEY="${serverCustomApiKey}"
+`;
+        }
+        import_fs.default.writeFileSync(envPath, envContent, "utf-8");
+      } catch (e) {
+        console.warn("Could not persist GEMINI_API_KEY to .env:", e);
+      }
+    } else {
+      delete process.env.GEMINI_API_KEY;
+    }
+  }
+  res.json({
+    success: true,
+    configured: Boolean(serverCustomApiKey)
+  });
+});
 app.post("/api/unspsc/search", async (req, res) => {
-  const { query } = req.body;
+  const { query, apiKey } = req.body;
+  const headerKey = req.headers["x-gemini-api-key"];
   try {
-    const ai = getGeminiClient();
-    const systemPrompt = `Eres una base de datos inteligente e hiper-precisa del cat\xE1logo completo de c\xF3digos UNSPSC (United Nations Standard Products and Services Code).
+    const ai = getGeminiClient(apiKey || headerKey);
+    if (ai) {
+      const systemPrompt = `Eres una base de datos inteligente e hiper-precisa del cat\xE1logo completo de c\xF3digos UNSPSC (United Nations Standard Products and Services Code).
 Tu tarea es buscar en el cat\xE1logo completo de la clasificaci\xF3n est\xE1ndar de UNSPSC y devolver coincidencias exactas o de alta relevancia en espa\xF1ol para la consulta del usuario.
 
 REGLA CLAVE PARA B\xDASQUEDAS NUM\xC9RICAS:
@@ -179,45 +358,49 @@ Debes responder estrictamente con un objeto JSON que coincida exactamente con la
 }
 
 No incluyas texto de introducci\xF3n ni bloques de Markdown, solo el JSON puro.`;
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: `Buscar c\xF3digos UNSPSC para la consulta: "${query || ""}"`,
-      config: {
-        systemInstruction: systemPrompt,
-        responseMimeType: "application/json",
-        temperature: 0.1
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-lite",
+        contents: `Buscar c\xF3digos UNSPSC para la consulta: "${query || ""}"`,
+        config: {
+          systemInstruction: systemPrompt,
+          responseMimeType: "application/json",
+          temperature: 0.1
+        }
+      });
+      const text = response.text || "{}";
+      let data = { codes: [] };
+      try {
+        data = JSON.parse(text.trim());
+      } catch (e) {
+        const match = text.match(/\{[\s\S]*\}/);
+        if (match) {
+          data = JSON.parse(match[0]);
+        }
       }
-    });
-    const text = response.text || "{}";
-    let data = { codes: [] };
-    try {
-      data = JSON.parse(text.trim());
-    } catch (e) {
-      const match = text.match(/\{[\s\S]*\}/);
-      if (match) {
-        data = JSON.parse(match[0]);
-      } else {
-        throw e;
+      if (data && data.codes && data.codes.length > 0) {
+        return res.json(data);
       }
     }
-    if (!data || !data.codes || data.codes.length === 0) {
-      data = getLocalFallbackSearch(query);
-    }
-    res.json(data);
+    const fallbackData = getLocalFallbackSearch(query);
+    return res.json(fallbackData);
   } catch (error) {
     console.warn("Gemini UNSPSC Search failed, using robust local search database fallback:", error);
     const fallbackData = getLocalFallbackSearch(query);
-    res.json(fallbackData);
+    return res.json(fallbackData);
   }
 });
 app.post("/api/ai-insights", async (req, res) => {
   try {
-    const { entityType, name, details, history } = req.body;
+    const { entityType, name, details, history, apiKey: bodyApiKey } = req.body;
+    const headerKey = req.headers["x-gemini-api-key"];
+    const customKey = bodyApiKey || headerKey;
     if (!name) {
       return res.status(400).json({ error: "Nombre es obligatorio para el an\xE1lisis" });
     }
-    const ai = getGeminiClient();
-    const systemPrompt = `Eres un asistente de Inteligencia Artificial experto en SRM (Supplier Relationship Management) y gesti\xF3n de compras profesionales.
+    const ai = getGeminiClient(customKey);
+    if (ai) {
+      try {
+        const systemPrompt = `Eres un asistente de Inteligencia Artificial experto en SRM (Supplier Relationship Management) y gesti\xF3n de compras profesionales.
 Analiza la informaci\xF3n proporcionada sobre el proveedor/contacto y genera un informe ejecutivo conciso pero de alto valor.
 
 El informe debe incluir:
@@ -227,28 +410,47 @@ El informe debe incluir:
 4. **Plantilla de Correo/Contacto**: Un borrador de correo personalizado y profesional listo para enviar a este proveedor/contacto seg\xFAn su estado actual.
 
 Mant\xE9n un tono profesional, claro y elegante en espa\xF1ol. Usa formato Markdown con negritas y listas.`;
-    const userPrompt = `
+        const userPrompt = `
 Tipo de Entidad: ${entityType === "empresa" ? "Empresa / Proveedor" : "Contacto Individual"}
 Nombre: ${name}
-Detalles t\xE9cnicos: ${JSON.stringify(details)}
-Historial de Interacciones: ${JSON.stringify(history)}
+Detalles t\xE9cnicos: ${JSON.stringify(details || {})}
+Historial de Interacciones: ${JSON.stringify(history || [])}
 
 Por favor, genera el an\xE1lisis y recomendaciones detalladas.
 `;
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: userPrompt,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.7
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: userPrompt,
+          config: {
+            systemInstruction: systemPrompt,
+            temperature: 0.7
+          }
+        });
+        if (response.text) {
+          return res.json({
+            insights: response.text,
+            source: "gemini",
+            model: "gemini-2.5-flash"
+          });
+        }
+      } catch (geminiError) {
+        console.warn("Gemini API call failed, falling back to SRM analytical engine:", geminiError?.message || geminiError);
       }
+    }
+    const fallbackInsights = generateLocalSRMInsights(entityType, name, details, history);
+    return res.json({
+      insights: fallbackInsights,
+      source: "local_engine",
+      isFallback: true,
+      notice: !ai ? "Informe generado con el motor anal\xEDtico SRM integrado. Para an\xE1lisis con Gemini 2.5 Flash en tiempo real, puedes configurar tu clave API de Google AI Studio." : "Gemini temporalmente no disponible; informe generado con el motor anal\xEDtico SRM integrado."
     });
-    res.json({ insights: response.text });
   } catch (error) {
-    console.error("Gemini API Error:", error);
-    res.status(500).json({
-      error: "Error al generar insights de IA",
-      details: error instanceof Error ? error.message : String(error)
+    console.error("AI Insights Error:", error);
+    const emergencyInsights = generateLocalSRMInsights(req.body?.entityType || "empresa", req.body?.name || "Entidad", req.body?.details, req.body?.history);
+    return res.json({
+      insights: emergencyInsights,
+      source: "local_engine",
+      isFallback: true
     });
   }
 });
