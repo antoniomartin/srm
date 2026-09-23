@@ -7,9 +7,8 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Building2, Users, MessageSquare, Settings, Search, Calendar, AlertTriangle, AlertCircle,
   LogOut, Plus, Upload, Download, RefreshCw, CheckCircle2, ChevronRight, X, Sparkles, Filter,
-  LayoutGrid, List, Clock, CheckSquare, FileText, Check, ExternalLink, Paperclip
+  LayoutGrid, List, Clock, CheckSquare, FileText, Check, ExternalLink, Paperclip, MapPin
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 
 // Firebase core
 import { 
@@ -58,12 +57,29 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
 
   // App Navigation & Filters
-  const [currentTab, setCurrentTab] = useState<'empresas' | 'contactos' | 'interacciones' | 'configuracion'>('empresas');
+  const [currentTab, setCurrentTab] = useState<'empresas' | 'contactos' | 'interacciones' | 'mapa' | 'configuracion'>('empresas');
+  const [mapTipoFilter, setMapTipoFilter] = useState<string>('todos');
+  const [mapEstadoFilter, setMapEstadoFilter] = useState<string>('todos');
   const [globalSearch, setGlobalSearch] = useState('');
   const [showSearchModal, setShowSearchModal] = useState(false);
   const [sortBy, setSortBy] = useState('nombre_asc');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedUnspsc, setSelectedUnspsc] = useState<string | null>(null);
+
+  // Global Keyboard Shortcut Ctrl+K / Cmd+K
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowSearchModal((prev) => !prev);
+      }
+      if (e.key === 'Escape') {
+        setShowSearchModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Rapid Filter
   const [quickFilter, setQuickFilter] = useState('');
@@ -769,8 +785,8 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-4 w-full md:w-auto">
-            {/* Realtime Search input */}
-            <div className="relative flex-1 md:w-64">
+            {/* Realtime Search input with Ctrl+K badge */}
+            <div className="relative flex-1 md:w-72">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
               <input 
                 type="text" 
@@ -778,14 +794,17 @@ export default function App() {
                 value={globalSearch}
                 onChange={(e) => setGlobalSearch(e.target.value)}
                 onFocus={() => setShowSearchModal(true)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2 pl-9 pr-4 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:bg-slate-850 transition-all font-medium"
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2 pl-9 pr-14 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:bg-slate-850 transition-all font-medium"
               />
+              <div className="absolute right-2.5 top-1/2 -translate-y-1/2 hidden sm:flex items-center pointer-events-none">
+                <kbd className="text-[10px] font-mono bg-slate-700/80 text-slate-300 px-1.5 py-0.5 rounded border border-slate-600 shadow-2xs">Ctrl K</kbd>
+              </div>
               {globalSearch && (
                 <button 
                   onClick={() => setGlobalSearch('')}
-                  className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
+                  className="absolute right-12 top-2.5 text-slate-400 hover:text-white cursor-pointer"
                 >
-                  <X className="w-4.5 h-4.5" />
+                  <X className="w-4 h-4" />
                 </button>
               )}
             </div>
@@ -820,7 +839,7 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Dashboard Stats */}
-        <DashboardStats stats={getStats()} />
+        <DashboardStats stats={getStats()} onNavigate={(tab) => { setCurrentTab(tab); setQuickFilter(''); }} />
 
         {/* Alerts Banner */}
         <AlertsBanner 
@@ -862,6 +881,15 @@ export default function App() {
               <MessageSquare className="w-4 h-4" /> <span className="hidden sm:inline">Interacciones</span>
             </button>
             <button 
+              onClick={() => { setCurrentTab('mapa'); setQuickFilter(''); }}
+              className={`flex-1 py-2.5 px-2 sm:px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                currentTab === 'mapa' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Mapa de Proveedores"
+            >
+              <MapPin className="w-4 h-4" /> <span className="hidden sm:inline">Mapa</span>
+            </button>
+            <button 
               onClick={() => { setCurrentTab('configuracion'); setQuickFilter(''); }}
               className={`flex-1 py-2.5 px-2 sm:px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'configuracion' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
@@ -873,7 +901,7 @@ export default function App() {
           </div>
 
           {/* Action Sub-Toolbar */}
-          {currentTab !== 'configuracion' && (
+          {currentTab !== 'configuracion' && currentTab !== 'mapa' && (
             <div className="p-4 border-b border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-2.5 w-full sm:w-auto">
                 <button 
@@ -1051,6 +1079,51 @@ export default function App() {
                   <option value="fecha_asc">📅 Antiguos primero</option>
                   <option value="fecha_desc">📅 Recientes primero</option>
                 </select>
+              </div>
+            </div>
+          )}
+
+          {currentTab === 'mapa' && (
+            <div className="p-4 border-b border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tipo:</span>
+                  <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+                    {(['todos', 'fabricante', 'distribuidor'] as const).map(tipo => (
+                      <button
+                        key={tipo}
+                        onClick={() => setMapTipoFilter(tipo)}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                          mapTipoFilter === tipo ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        {tipo === 'todos' ? 'Todos' : tipo === 'fabricante' ? '🏭 Fabricantes' : '🚚 Distribuidores'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Estado:</span>
+                  <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+                    {(['todos', 'activo', 'prospecto', 'inactivo'] as const).map(estado => (
+                      <button
+                        key={estado}
+                        onClick={() => setMapEstadoFilter(estado)}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                          mapEstadoFilter === estado ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        {estado === 'todos' ? 'Todos' : estado.charAt(0).toUpperCase() + estado.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="text-xs text-slate-500 font-semibold flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/60">
+                <MapPin className="w-3.5 h-3.5 text-indigo-500" />
+                <span>{empresas.length} empresas registradas</span>
               </div>
             </div>
           )}
@@ -1409,16 +1482,20 @@ export default function App() {
               </div>
             )}
 
-            {currentTab === 'configuracion' && (
-              <div className="space-y-6">
+            {currentTab === 'mapa' && (
+              <div className="space-y-4">
                 <LeafletMap 
                   empresas={empresas}
                   onOpenFicha={(id) => handleOpenEmpresa(id)}
-                  selectedTipo="todos"
-                  selectedEstado="todos"
+                  selectedTipo={mapTipoFilter}
+                  selectedEstado={mapEstadoFilter}
                   scores={scores}
                 />
+              </div>
+            )}
 
+            {currentTab === 'configuracion' && (
+              <div className="space-y-6">
                 <TagManager 
                   empresas={empresas}
                   onUpdateEmpresa={async (emp) => { await saveDocument('empresas', emp, emp.id); }}
@@ -1482,9 +1559,6 @@ export default function App() {
         onDeleteContacto={async (id) => deleteDocument('contactos', id)}
         onUpdateInteraccion={async (inter) => {
           await saveDocument('interacciones', inter, inter.id);
-          if (inter.estado === 'completada') {
-            confetti({ particleCount: 60, spread: 40, origin: { y: 0.8 } });
-          }
         }}
         onDeleteInteraccion={async (id) => deleteDocument('interacciones', id)}
         onAddRelacion={async (fId, dId, pref) => saveDocument('relaciones', { fabricanteId: fId, distribuidorId: dId, preferente: pref })}
