@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { 
   X, Trash2, Phone, Mail, ExternalLink, Sparkles, AlertCircle, Plus, Tag,
-  Briefcase, UserCheck, UserX 
+  Briefcase, UserCheck, UserX, User, Building2
 } from 'lucide-react';
 import md5 from 'blueimp-md5';
 import { Contacto, Empresa, Interaccion } from '../../types';
@@ -14,15 +14,18 @@ import { SearchSelect } from '../SearchSelect';
 
 export interface ContactoDetailModalProps {
   selectedContacto: Contacto | null;
+  isCreating?: boolean;
   onClose: () => void;
   empresas: Empresa[];
   contactos: Contacto[];
   interacciones: Interaccion[];
   onUpdateContacto: (cont: Contacto) => Promise<void>;
+  onCreateContacto?: (cont: Omit<Contacto, 'id'>) => Promise<string | undefined>;
   onDeleteContacto: (id: string) => Promise<void>;
   onUpdateInteraccion: (inter: Interaccion) => Promise<void>;
   onOpenEmpresa?: (id: string) => void;
   onOpenInteraccion?: (id: string) => void;
+  onOpenContacto?: (id: string) => void;
   askConfirmation: (
     title: string,
     message: string,
@@ -35,15 +38,18 @@ export interface ContactoDetailModalProps {
 
 export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
   selectedContacto,
+  isCreating = false,
   onClose,
   empresas,
   contactos,
   interacciones,
   onUpdateContacto,
+  onCreateContacto,
   onDeleteContacto,
   onUpdateInteraccion,
   onOpenEmpresa,
   onOpenInteraccion,
+  onOpenContacto,
   askConfirmation,
 }) => {
   const [gravatarFailed, setGravatarFailed] = useState(false);
@@ -51,14 +57,33 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [aiError, setAiError] = useState('');
 
-  // Local state for text fields (avoids Firebase call on every keystroke)
+  // Local state for all fields (supports immediate creation & smooth editing)
+  const [localNombre, setLocalNombre] = useState(selectedContacto?.nombre || '');
+  const [localEmpresaId, setLocalEmpresaId] = useState(selectedContacto?.empresaId || '');
   const [localCargo, setLocalCargo] = useState(selectedContacto?.cargo || '');
+  const [localReportaA, setLocalReportaA] = useState<string | null>(selectedContacto?.reportaA || null);
   const [localTelefono, setLocalTelefono] = useState(selectedContacto?.telefono || '');
   const [localEmail, setLocalEmail] = useState(selectedContacto?.email || '');
   const [localLinkedin, setLocalLinkedin] = useState(selectedContacto?.linkedin || '');
   const [localFoto, setLocalFoto] = useState(selectedContacto?.foto || '');
   const [localNotas, setLocalNotas] = useState(selectedContacto?.notas || '');
+  const [localEstado, setLocalEstado] = useState<'activo' | 'inactivo'>(selectedContacto?.estado || 'activo');
   const [localMotivoInactivo, setLocalMotivoInactivo] = useState(selectedContacto?.motivoInactivo || '');
+  const [localEmpresaConocido, setLocalEmpresaConocido] = useState<string[]>(
+    Array.isArray(selectedContacto?.empresaConocido)
+      ? selectedContacto.empresaConocido
+      : selectedContacto?.empresaConocido
+      ? [selectedContacto.empresaConocido]
+      : []
+  );
+  const [localEmpresasAnteriores, setLocalEmpresasAnteriores] = useState<string[]>(
+    selectedContacto?.empresasAnteriores || []
+  );
+  const [localIntereses, setLocalIntereses] = useState<string[]>(selectedContacto?.intereses || []);
+  const [localEmpresaIds, setLocalEmpresaIds] = useState<string[]>(selectedContacto?.empresaIds || []);
+
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [isSavingNew, setIsSavingNew] = useState(false);
 
   // Inline interaction creation
   const [showAddInterFormCont, setShowAddInterFormCont] = useState(false);
@@ -80,42 +105,117 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
   const [newInteresesInput, setNewInteresesInput] = useState('');
   const [showInteresesSuggestions, setShowInteresesSuggestions] = useState(false);
 
-  // Sync local state when contact changes
+  // Sync local state when contact changes or when entering creation mode
   useEffect(() => {
     setGravatarFailed(false);
     setAiResponse(null);
     setAiError('');
+    setCreateError(null);
     setShowAddInterFormCont(false);
+    setLocalNombre(selectedContacto?.nombre || '');
+    setLocalEmpresaId(selectedContacto?.empresaId || '');
     setLocalCargo(selectedContacto?.cargo || '');
+    setLocalReportaA(selectedContacto?.reportaA || null);
     setLocalTelefono(selectedContacto?.telefono || '');
     setLocalEmail(selectedContacto?.email || '');
     setLocalLinkedin(selectedContacto?.linkedin || '');
     setLocalFoto(selectedContacto?.foto || '');
     setLocalNotas(selectedContacto?.notas || '');
+    setLocalEstado(selectedContacto?.estado || 'activo');
     setLocalMotivoInactivo(selectedContacto?.motivoInactivo || '');
-  }, [selectedContacto?.id]);
+    setLocalEmpresaConocido(
+      Array.isArray(selectedContacto?.empresaConocido)
+        ? selectedContacto.empresaConocido
+        : selectedContacto?.empresaConocido
+        ? [selectedContacto.empresaConocido]
+        : []
+    );
+    setLocalEmpresasAnteriores(selectedContacto?.empresasAnteriores || []);
+    setLocalIntereses(selectedContacto?.intereses || []);
+    setLocalEmpresaIds(selectedContacto?.empresaIds || []);
+  }, [selectedContacto, isCreating]);
+
+  // Duplicate contact detection in creation mode
+  const duplicateContacto = useMemo(() => {
+    if (!isCreating) return null;
+    const rawName = (localNombre || '').trim().toLowerCase();
+    const rawEmail = (localEmail || '').trim().toLowerCase();
+    const rawTel = (localTelefono || '').replace(/\D/g, '');
+
+    if (!rawName && !rawEmail && !rawTel) return null;
+
+    const normalizePersonName = (str: string) => {
+      return str
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+    };
+
+    const normName = normalizePersonName(rawName);
+
+    return contactos.find((c) => {
+      if (selectedContacto?.id && c.id === selectedContacto.id) return false;
+      // 1. Email exact match
+      if (rawEmail && c.email) {
+        if (c.email.trim().toLowerCase() === rawEmail) return true;
+      }
+      // 2. Phone match (at least 8 digits)
+      if (rawTel && rawTel.length >= 8 && c.telefono) {
+        const existTel = c.telefono.replace(/\D/g, '');
+        if (existTel === rawTel || existTel.endsWith(rawTel) || rawTel.endsWith(existTel)) return true;
+      }
+      // 3. Name match in same company
+      if (normName.length >= 3 && localEmpresaId) {
+        const existNorm = normalizePersonName(c.nombre || '');
+        if (existNorm === normName) {
+          const inSameEmpresa = c.empresaId === localEmpresaId || (c.empresaIds && c.empresaIds.includes(localEmpresaId));
+          if (inSameEmpresa) return true;
+        }
+      }
+      return false;
+    }) || null;
+  }, [isCreating, localNombre, localEmail, localTelefono, localEmpresaId, contactos, selectedContacto?.id]);
 
   const gravatarUrl = useMemo(() => {
-    if (!selectedContacto?.email || !selectedContacto.email.trim()) return null;
-    const hash = md5(selectedContacto.email.trim().toLowerCase());
+    const emailToUse = localEmail.trim() || selectedContacto?.email?.trim();
+    if (!emailToUse) return null;
+    const hash = md5(emailToUse.toLowerCase());
     return `https://www.gravatar.com/avatar/${hash}?s=150&d=404`;
-  }, [selectedContacto?.email]);
+  }, [localEmail, selectedContacto?.email]);
 
   const handleInlineSave = async (field: string, value: any) => {
-    if (!selectedContacto) return;
+    if (field === 'nombre') setLocalNombre(value);
+    if (field === 'empresaId') setLocalEmpresaId(value);
+    if (field === 'cargo') setLocalCargo(value);
+    if (field === 'reportaA') setLocalReportaA(value);
+    if (field === 'telefono') setLocalTelefono(value);
+    if (field === 'email') setLocalEmail(value);
+    if (field === 'linkedin') setLocalLinkedin(value);
+    if (field === 'foto') setLocalFoto(value);
+    if (field === 'notas') setLocalNotas(value);
+    if (field === 'estado') setLocalEstado(value);
+    if (field === 'motivoInactivo') setLocalMotivoInactivo(value);
+    if (field === 'empresaConocido') setLocalEmpresaConocido(value);
+    if (field === 'empresasAnteriores') setLocalEmpresasAnteriores(value);
+    if (field === 'intereses') setLocalIntereses(value);
+    if (field === 'empresaIds') setLocalEmpresaIds(value);
+
+    // If creating a new contact, we only update local state until Save button is clicked
+    if (isCreating || !selectedContacto?.id) return;
+
     const updated = { ...selectedContacto, [field]: value };
     await onUpdateContacto(updated);
   };
 
-  // Save a text field on blur (called when user leaves the input)
+  // Save a text field on blur (called when user leaves the input in edit mode)
   const handleBlurSave = useCallback((field: string, value: string) => {
-    if (!selectedContacto) return;
-    // Only save if value actually changed
+    if (isCreating || !selectedContacto?.id) return;
     if ((selectedContacto as any)[field] !== value) {
       handleInlineSave(field, value);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedContacto]);
+  }, [selectedContacto, isCreating]);
 
   const existingEmpresaConocidoTags = useMemo(() => {
     const tagsSet = new Set<string>();
@@ -162,44 +262,81 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
     field: 'empresaConocido' | 'empresasAnteriores' | 'intereses',
     tag: string
   ) => {
-    if (!selectedContacto) return;
     const trimmed = tag.trim();
     if (!trimmed) return;
 
     let currentTags: string[] = [];
-    const rawVal = selectedContacto[field];
-    if (Array.isArray(rawVal)) {
-      currentTags = [...rawVal];
-    } else if (typeof rawVal === 'string' && (rawVal as string).trim()) {
-      currentTags = [(rawVal as string).trim()];
-    }
+    if (field === 'empresaConocido') currentTags = [...localEmpresaConocido];
+    else if (field === 'empresasAnteriores') currentTags = [...localEmpresasAnteriores];
+    else if (field === 'intereses') currentTags = [...localIntereses];
 
     if (currentTags.map((t) => t.toLowerCase()).includes(trimmed.toLowerCase())) return;
 
-    await handleInlineSave(field, [...currentTags, trimmed]);
+    const updatedTags = [...currentTags, trimmed];
+    await handleInlineSave(field, updatedTags);
   };
 
   const handleRemoveTag = async (
     field: 'empresaConocido' | 'empresasAnteriores' | 'intereses',
     tag: string
   ) => {
-    if (!selectedContacto) return;
     let currentTags: string[] = [];
-    const rawVal = selectedContacto[field];
-    if (Array.isArray(rawVal)) {
-      currentTags = [...rawVal];
-    } else if (typeof rawVal === 'string' && (rawVal as string).trim()) {
-      currentTags = [(rawVal as string).trim()];
+    if (field === 'empresaConocido') currentTags = [...localEmpresaConocido];
+    else if (field === 'empresasAnteriores') currentTags = [...localEmpresasAnteriores];
+    else if (field === 'intereses') currentTags = [...localIntereses];
+
+    const updatedTags = currentTags.filter((t) => t !== tag);
+    await handleInlineSave(field, updatedTags);
+  };
+
+  const handleSaveNewContacto = async () => {
+    if (!localNombre.trim()) {
+      setCreateError('El nombre completo del contacto es obligatorio.');
+      return;
+    }
+    if (!localEmpresaId) {
+      setCreateError('Debes seleccionar la empresa a la que pertenece el contacto.');
+      return;
+    }
+    if (duplicateContacto) {
+      setCreateError(`Ya existe un contacto con estos datos: "${duplicateContacto.nombre}".`);
+      return;
     }
 
-    await handleInlineSave(
-      field,
-      currentTags.filter((t) => t !== tag)
-    );
+    setCreateError(null);
+    setIsSavingNew(true);
+    try {
+      const newContactData: Omit<Contacto, 'id'> = {
+        nombre: localNombre.trim(),
+        empresaId: localEmpresaId,
+        cargo: localCargo.trim(),
+        reportaA: localReportaA || null,
+        telefono: localTelefono.trim(),
+        email: localEmail.trim(),
+        linkedin: localLinkedin.trim(),
+        foto: localFoto.trim(),
+        notas: localNotas.trim(),
+        estado: localEstado,
+        motivoInactivo: localEstado === 'inactivo' ? localMotivoInactivo.trim() : '',
+        empresaConocido: localEmpresaConocido,
+        empresasAnteriores: localEmpresasAnteriores,
+        intereses: localIntereses,
+        empresaIds: localEmpresaIds,
+        fecha_creacion: new Date().toISOString(),
+      };
+
+      if (onCreateContacto) {
+        await onCreateContacto(newContactData);
+      }
+    } catch (err: any) {
+      setCreateError(err.message || 'Error al guardar el contacto.');
+    } finally {
+      setIsSavingNew(false);
+    }
   };
 
   const generateAiInsights = async () => {
-    if (!selectedContacto) return;
+    if (!selectedContacto?.id) return;
     setAiLoading(true);
     setAiError('');
     try {
@@ -215,33 +352,35 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           entityType: 'contacto',
-          name: selectedContacto.nombre,
+          name: localNombre || selectedContacto.nombre,
           details: selectedContacto,
           history,
         }),
       });
 
-      if (!resp.ok) throw new Error('Error al conectar con el servicio de IA');
+      if (!resp.ok) {
+        throw new Error('Error al generar informe con IA.');
+      }
+
       const data = await resp.json();
       setAiResponse(data.insights);
-    } catch (err) {
-      console.error(err);
-      setAiError(err instanceof Error ? err.message : String(err));
+    } catch (err: any) {
+      setAiError(err.message || 'Error al comunicarse con la IA.');
     } finally {
       setAiLoading(false);
     }
   };
 
-  if (!selectedContacto) return null;
+  if (!selectedContacto && !isCreating) return null;
 
-  const contactInteractions = interacciones.filter((i) => {
+  const contactInteractions = !isCreating && selectedContacto?.id ? interacciones.filter((i) => {
     const ids = i.contactoIds?.length ? i.contactoIds : (i.contactoId ? [i.contactoId] : []);
     return ids.includes(selectedContacto.id!);
-  });
+  }) : [];
 
   return (
     <div
-      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 transition-all duration-300"
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-3 sm:p-6 transition-all duration-300"
       onClick={onClose}
     >
       <div
@@ -251,33 +390,39 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
         {/* Header */}
         <div className="p-6 bg-indigo-900 text-white flex items-start justify-between">
           <div className="flex items-center gap-4">
-            {selectedContacto.foto ? (
+            {localFoto ? (
               <img
-                src={selectedContacto.foto}
-                alt={selectedContacto.nombre}
+                src={localFoto}
+                alt={localNombre || 'Contacto'}
                 className="w-14 h-14 rounded-full object-cover shadow-md border-2 border-white/20"
                 referrerPolicy="no-referrer"
               />
             ) : !gravatarFailed && gravatarUrl ? (
               <img
                 src={gravatarUrl}
-                alt={selectedContacto.nombre}
+                alt={localNombre || 'Contacto'}
                 className="w-14 h-14 rounded-full object-cover shadow-md border-2 border-white/20"
                 referrerPolicy="no-referrer"
                 onError={() => setGravatarFailed(true)}
               />
             ) : (
               <div className="w-14 h-14 bg-white/10 rounded-full flex items-center justify-center text-xl font-bold shadow-inner border border-white/20 uppercase">
-                {(selectedContacto.nombre || 'U').slice(0, 2)}
+                {localNombre ? localNombre.slice(0, 2) : <Plus className="w-6 h-6 text-indigo-300" />}
               </div>
             )}
             <div>
               <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-2xl font-bold text-slate-50">{selectedContacto.nombre}</h2>
-                {selectedContacto.estado === 'inactivo' ? (
+                <h2 className="text-2xl font-bold text-slate-50">
+                  {isCreating ? (localNombre.trim() || 'Nuevo Contacto') : (localNombre || selectedContacto?.nombre)}
+                </h2>
+                {isCreating ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                    ✨ Nuevo Perfil Completo
+                  </span>
+                ) : localEstado === 'inactivo' ? (
                   <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-400/20 text-amber-200 border border-amber-300/30">
                     <UserX className="w-3.5 h-3.5" />
-                    Inactivo {selectedContacto.motivoInactivo ? `• ${selectedContacto.motivoInactivo}` : ''}
+                    Inactivo {localMotivoInactivo ? `• ${localMotivoInactivo}` : ''}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-400/20 text-emerald-200 border border-emerald-300/30">
@@ -287,7 +432,7 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
               </div>
               <p className="text-sm text-indigo-200 font-medium mt-0.5 flex items-center gap-1.5">
                 <Briefcase className="w-3.5 h-3.5 opacity-80" />
-                {selectedContacto.cargo || 'Sin cargo definido'}
+                {localCargo || (isCreating ? 'Rellena todos los campos para dar de alta' : 'Sin cargo definido')}
               </p>
             </div>
           </div>
@@ -301,29 +446,32 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
 
         {/* Body */}
         <div className="p-6 space-y-6 flex-1 overflow-y-auto">
-          <div className="flex flex-wrap gap-2 pb-4 border-b border-slate-100">
-            <button
-              onClick={generateAiInsights}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-all cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4" /> Obtener Informe de Contacto IA
-            </button>
-            <button
-              onClick={() => {
-                askConfirmation(
-                  "¿Eliminar Contacto?",
-                  `¿Estás seguro de que deseas eliminar permanentemente al contacto "${selectedContacto.nombre}"? Esta acción no se puede deshacer.`,
-                  () => {
-                    onDeleteContacto(selectedContacto.id!);
-                    onClose();
-                  }
-                );
-              }}
-              className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-50 text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-all cursor-pointer"
-            >
-              <Trash2 className="w-4 h-4" /> Eliminar
-            </button>
-          </div>
+          {/* Action Toolbar for existing contacts */}
+          {!isCreating && selectedContacto?.id && (
+            <div className="flex flex-wrap gap-2 pb-4 border-b border-slate-100">
+              <button
+                onClick={generateAiInsights}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-all cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" /> Obtener Informe de Contacto IA
+              </button>
+              <button
+                onClick={() => {
+                  askConfirmation(
+                    "¿Eliminar Contacto?",
+                    `¿Estás seguro de que deseas eliminar permanentemente al contacto "${localNombre || selectedContacto.nombre}"? Esta acción no se puede deshacer.`,
+                    () => {
+                      onDeleteContacto(selectedContacto.id!);
+                      onClose();
+                    }
+                  );
+                }}
+                className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-50 text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" /> Eliminar
+              </button>
+            </div>
+          )}
 
           {/* AI response display */}
           {aiLoading && (
@@ -353,16 +501,103 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
             </div>
           )}
 
+          {/* Duplicate Contact Alert */}
+          {duplicateContacto && (
+            <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl text-xs text-amber-900 flex items-start gap-3 shadow-2xs">
+              <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="font-bold text-amber-950 text-sm">⚠️ Posible contacto duplicado detectado</p>
+                <p className="mt-1 text-amber-800 leading-relaxed">
+                  Ya existe un contacto registrado como <strong>"{duplicateContacto.nombre}"</strong>
+                  {duplicateContacto.cargo ? ` (${duplicateContacto.cargo})` : ''}
+                  {duplicateContacto.email ? ` • ${duplicateContacto.email}` : ''}
+                  {duplicateContacto.telefono ? ` • Tel: ${duplicateContacto.telefono}` : ''}
+                  {duplicateContacto.empresaId ? ` en "${empresas.find(e => e.id === duplicateContacto.empresaId)?.nombre || ''}"` : ''}.
+                </p>
+                {onOpenContacto && duplicateContacto.id && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenContacto(duplicateContacto.id!);
+                    }}
+                    className="mt-2.5 inline-flex items-center gap-1.5 font-bold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
+                  >
+                    Abrir ficha del contacto existente →
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Creation Error Banner */}
+          {createError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+              <span>{createError}</span>
+            </div>
+          )}
+
+          {/* Nombre y Empresa Principal (Bloque Superior Destacado) */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 bg-indigo-50/40 border border-indigo-100 rounded-2xl">
+            <div>
+              <label className="block text-xs font-bold text-indigo-950 uppercase flex items-center justify-between mb-1">
+                <span className="flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-indigo-600" />
+                  Nombre Completo *
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {isCreating ? 'Obligatorio' : 'Se guarda automáticamente'}
+                </span>
+              </label>
+              <input
+                type="text"
+                required
+                value={localNombre}
+                onChange={(e) => {
+                  setLocalNombre(e.target.value);
+                  setCreateError(null);
+                  if (!isCreating) handleInlineSave('nombre', e.target.value);
+                }}
+                onBlur={() => !isCreating && handleBlurSave('nombre', localNombre)}
+                placeholder="Ej. Juan Pérez García"
+                className="w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-bold text-slate-800 focus:border-indigo-500 outline-none transition-all shadow-2xs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-indigo-950 uppercase flex items-center justify-between mb-1">
+                <span className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                  Empresa Principal *
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {isCreating ? 'Obligatorio' : 'Empresa asignada'}
+                </span>
+              </label>
+              <SearchSelect
+                placeholder="Escribe para buscar empresa..."
+                value={localEmpresaId || ''}
+                onChange={(val) => {
+                  setLocalEmpresaId(val);
+                  setCreateError(null);
+                  if (!isCreating) handleInlineSave('empresaId', val);
+                }}
+                options={empresas.map((e) => ({ value: e.id!, label: e.nombre, sublabel: e.tipo }))}
+              />
+            </div>
+          </div>
+
           {/* Estado del Contacto & Motivo de Inactividad */}
           <div className={`p-4 rounded-xl border transition-all duration-200 ${
-            selectedContacto.estado === 'inactivo' 
+            localEstado === 'inactivo' 
               ? 'bg-amber-50/50 border-amber-200' 
               : 'bg-slate-50/80 border-slate-200'
           }`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <span className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  {selectedContacto.estado === 'inactivo' ? (
+                  {localEstado === 'inactivo' ? (
                     <UserX className="w-4 h-4 text-amber-600" />
                   ) : (
                     <UserCheck className="w-4 h-4 text-emerald-600" />
@@ -370,7 +605,7 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                   Estado del Contacto
                 </span>
                 <span className="text-[11px] text-slate-500 mt-0.5 block">
-                  {selectedContacto.estado === 'inactivo'
+                  {localEstado === 'inactivo'
                     ? 'Contacto marcado como inactivo (no disponible para gestiones operativas).'
                     : 'Contacto activo y disponible para interacciones comerciales.'}
                 </span>
@@ -382,12 +617,12 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                     handleInlineSave('estado', 'activo');
                   }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    selectedContacto.estado !== 'inactivo'
+                    localEstado !== 'inactivo'
                       ? 'bg-emerald-600 text-white shadow-2xs'
                       : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                   }`}
                 >
-                  <span className={`w-2 h-2 rounded-full ${selectedContacto.estado !== 'inactivo' ? 'bg-white' : 'bg-slate-300'}`}></span>
+                  <span className={`w-2 h-2 rounded-full ${localEstado !== 'inactivo' ? 'bg-white' : 'bg-slate-300'}`}></span>
                   Activo
                 </button>
                 <button
@@ -396,25 +631,25 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                     handleInlineSave('estado', 'inactivo');
                   }}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
-                    selectedContacto.estado === 'inactivo'
+                    localEstado === 'inactivo'
                       ? 'bg-slate-800 text-white shadow-2xs'
                       : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
                   }`}
                 >
-                  <span className={`w-2 h-2 rounded-full ${selectedContacto.estado === 'inactivo' ? 'bg-amber-400' : 'bg-slate-300'}`}></span>
+                  <span className={`w-2 h-2 rounded-full ${localEstado === 'inactivo' ? 'bg-amber-400' : 'bg-slate-300'}`}></span>
                   Inactivo
                 </button>
               </div>
             </div>
 
-            {selectedContacto.estado === 'inactivo' && (
+            {localEstado === 'inactivo' && (
               <div className="mt-3 pt-3 border-t border-amber-200/80 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
                     <span>Motivo de Inactividad</span>
                     <span className="text-[10px] text-slate-400 font-normal lowercase">(opcional)</span>
                   </label>
-                  {selectedContacto.motivoInactivo && (
+                  {localMotivoInactivo && (
                     <button
                       type="button"
                       onClick={() => {
@@ -431,7 +666,7 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                 {/* Quick Suggestion Pills */}
                 <div className="flex flex-wrap gap-1.5">
                   {['Jubilación', 'Cambio de empresa', 'Despido', 'Baja voluntaria', 'Excedencia', 'Fin de contrato'].map((motivo) => {
-                    const isSelected = (selectedContacto.motivoInactivo || '').toLowerCase().trim() === motivo.toLowerCase().trim();
+                    const isSelected = (localMotivoInactivo || '').toLowerCase().trim() === motivo.toLowerCase().trim();
                     return (
                       <button
                         key={motivo}
@@ -474,7 +709,9 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                   <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
                   Cargo / Rol / Puesto de Trabajo
                 </span>
-                <span className="text-[10px] text-slate-400 font-medium">Se guarda automáticamente</span>
+                <span className="text-[10px] text-slate-400 font-medium">
+                  {isCreating ? 'Opcional' : 'Se guarda automáticamente'}
+                </span>
               </label>
               <input
                 type="text"
@@ -493,14 +730,18 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                 <input
                   type="text"
                   value={localTelefono}
-                  onChange={(e) => setLocalTelefono(e.target.value)}
+                  onChange={(e) => {
+                    setLocalTelefono(e.target.value);
+                    setCreateError(null);
+                  }}
                   onBlur={() => handleBlurSave('telefono', localTelefono)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                  placeholder="Ej. +34 600 000 000"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
                 />
-                {selectedContacto.telefono && (
+                {localTelefono && (
                   <div className="flex gap-1">
                     <a
-                      href={`tel:${selectedContacto.telefono}`}
+                      href={`tel:${localTelefono}`}
                       className="p-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center border border-indigo-100 transition-colors cursor-pointer"
                       title="Llamar directamente"
                     >
@@ -508,14 +749,14 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                     </a>
                     <a
                       href={(() => {
-                        const clean = selectedContacto.telefono.replace(/[^\d]/g, '');
+                        const clean = localTelefono.replace(/[^\d]/g, '');
                         const finalPhone =
                           clean.length === 9 && (clean.startsWith('6') || clean.startsWith('7') || clean.startsWith('9'))
                             ? '34' + clean
                             : clean;
                         const hour = new Date().getHours();
                         const saludo = hour < 12 ? 'Buenos\u00A0d\u00EDas' : 'Buenas\u00A0tardes';
-                        const firstName = (selectedContacto.nombre || '').trim().split(/\s+/)[0];
+                        const firstName = (localNombre || '').trim().split(/\s+/)[0];
                         const text = `${saludo} ${firstName}, `;
                         return `https://wa.me/${finalPhone}?text=${encodeURIComponent(text)}`;
                       })()}
@@ -539,13 +780,17 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                 <input
                   type="email"
                   value={localEmail}
-                  onChange={(e) => setLocalEmail(e.target.value)}
+                  onChange={(e) => {
+                    setLocalEmail(e.target.value);
+                    setCreateError(null);
+                  }}
                   onBlur={() => handleBlurSave('email', localEmail)}
+                  placeholder="ejemplo@empresa.com"
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
                 />
-                {selectedContacto.email && selectedContacto.email.trim() && (
+                {localEmail && localEmail.trim() && (
                   <a
-                    href={`mailto:${selectedContacto.email.trim()}`}
+                    href={`mailto:${localEmail.trim()}`}
                     className="p-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 hover:text-indigo-700 rounded-lg transition-colors flex items-center justify-center cursor-pointer h-[38px] w-[38px] shrink-0"
                     title="Enviar correo electrónico"
                   >
@@ -563,15 +808,15 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                   value={localLinkedin}
                   onChange={(e) => setLocalLinkedin(e.target.value)}
                   onBlur={() => handleBlurSave('linkedin', localLinkedin)}
+                  placeholder="https://linkedin.com/in/usuario"
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
                 />
-                {selectedContacto.linkedin && (
+                {localLinkedin && (
                   <a
                     href={
-                      selectedContacto.linkedin.trim().startsWith('http://') ||
-                      selectedContacto.linkedin.trim().startsWith('https://')
-                        ? selectedContacto.linkedin.trim()
-                        : `https://${selectedContacto.linkedin.trim()}`
+                      localLinkedin.trim().startsWith('http://') || localLinkedin.trim().startsWith('https://')
+                        ? localLinkedin.trim()
+                        : `https://${localLinkedin.trim()}`
                     }
                     target="_blank"
                     rel="noopener noreferrer"
@@ -596,7 +841,7 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                     placeholder="Pega un enlace de foto de LinkedIn o de cualquier web..."
                     className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none transition-all"
                   />
-                  {selectedContacto.foto && (
+                  {localFoto && (
                     <button
                       type="button"
                       onClick={() => handleInlineSave('foto', '')}
@@ -641,72 +886,69 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                 Superior Jerárquico (Reporta A)
               </label>
               <SearchSelect
-                placeholder="Escribe para buscar superior jerárquico..."
-                value={selectedContacto.reportaA || ''}
+                placeholder={localEmpresaId ? "Escribe para buscar superior jerárquico..." : "Selecciona primero una empresa"}
+                value={localReportaA || ''}
                 onChange={(val) => handleInlineSave('reportaA', val || null)}
                 options={contactos
                   .filter(
                     (c) =>
-                      c.id !== selectedContacto.id &&
-                      (c.empresaId === selectedContacto.empresaId ||
-                        c.empresaIds?.includes(selectedContacto.empresaId))
+                      (isCreating || c.id !== selectedContacto?.id) &&
+                      (c.empresaId === localEmpresaId || c.empresaIds?.includes(localEmpresaId))
                   )
                   .map((c) => ({ value: c.id!, label: c.nombre, sublabel: c.cargo || 'Sin cargo' }))}
               />
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase">Notas del contacto</label>
+              <label className="block text-xs font-bold text-slate-500 uppercase">Notas y acuerdos del contacto</label>
               <textarea
                 value={localNotas}
                 onChange={(e) => setLocalNotas(e.target.value)}
                 onBlur={() => handleBlurSave('notas', localNotas)}
                 rows={3}
                 className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all resize-none font-medium text-slate-700"
-                placeholder="Escribe comentarios o notas sobre este contacto..."
+                placeholder="Escribe comentarios, acuerdos, proyectos o notas sobre este contacto..."
               />
             </div>
 
             {/* Empresa donde trabajaba el usuario al conocer al contacto */}
-            <div className="md:col-span-2 border-t border-slate-100 pt-4">
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
-                💼 Empresa donde trabajaba el usuario al conocer al contacto
+            <div className="md:col-span-2 border-t border-slate-100 pt-4 mt-2">
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center justify-between">
+                <span>Empresa donde trabajabas cuando conociste a este contacto</span>
+                <span className="text-[10px] text-slate-400 font-normal lowercase">(opcional)</span>
               </label>
-              <div className="flex flex-wrap gap-1.5 p-3 border border-slate-200 rounded-xl bg-slate-50">
-                {(() => {
-                  const val = selectedContacto.empresaConocido;
-                  const tags = Array.isArray(val)
-                    ? val
-                    : val && (val as string).trim()
-                    ? [(val as string).trim()]
-                    : [];
-                  return tags.map((tag, idx) => (
-                    <span
-                      key={idx}
-                      className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-750 px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm hover:border-slate-300"
+              <p className="text-[11px] text-slate-500 mb-2">
+                Asigna en qué empresa tuya trabajabas cuando iniciaste la relación profesional con este contacto.
+              </p>
+
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {localEmpresaConocido.map((tag, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full text-xs font-medium border border-indigo-200"
+                  >
+                    <span>{tag}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveTag('empresaConocido', tag)}
+                      className="text-indigo-400 hover:text-indigo-900 font-bold ml-1 cursor-pointer"
                     >
-                      {tag}
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTag('empresaConocido', tag)}
-                        className="text-slate-400 hover:text-rose-600 font-bold ml-1 transition-colors cursor-pointer"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ));
-                })()}
-                <div className="relative flex items-center gap-1">
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+
+              <div className="relative">
+                <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="Escribir empresa..."
                     value={newEmpresaConocidoInput}
                     onChange={(e) => {
                       setNewEmpresaConocidoInput(e.target.value);
                       setShowEmpresaConocidoSuggestions(true);
                     }}
                     onFocus={() => setShowEmpresaConocidoSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowEmpresaConocidoSuggestions(false), 200)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -717,90 +959,96 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                         }
                       }
                     }}
-                    className="bg-white border border-slate-200 rounded-full px-3 py-1 text-xs outline-none focus:border-indigo-500 transition-all w-36 font-medium"
+                    placeholder="Ej. MiEmpresa Anterior, Consultora X, etc..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:bg-white focus:border-indigo-500 outline-none"
                   />
-                  {showEmpresaConocidoSuggestions && newEmpresaConocidoInput.trim() && (
-                    <div className="absolute left-0 bottom-full mb-1 min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 divide-y divide-slate-50 overflow-hidden max-h-48 overflow-y-auto">
-                      {!existingEmpresaConocidoTags.some(
-                        (t) => t.toLowerCase() === newEmpresaConocidoInput.trim().toLowerCase()
-                      ) && (
-                        <button
-                          type="button"
-                          onMouseDown={() => {
-                            handleAddTag('empresaConocido', newEmpresaConocidoInput.trim());
-                            setNewEmpresaConocidoInput('');
-                            setShowEmpresaConocidoSuggestions(false);
-                          }}
-                          className="w-full text-left px-3.5 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Crear nuevo: "{newEmpresaConocidoInput.trim()}"</span>
-                        </button>
-                      )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newEmpresaConocidoInput.trim()) {
+                        handleAddTag('empresaConocido', newEmpresaConocidoInput.trim());
+                        setNewEmpresaConocidoInput('');
+                        setShowEmpresaConocidoSuggestions(false);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs cursor-pointer border border-indigo-200 transition-colors shrink-0"
+                  >
+                    + Añadir
+                  </button>
+                </div>
+
+                {showEmpresaConocidoSuggestions &&
+                  newEmpresaConocidoInput.trim().length > 0 &&
+                  existingEmpresaConocidoTags.filter(
+                    (tag) =>
+                      tag.toLowerCase().includes(newEmpresaConocidoInput.toLowerCase()) &&
+                      !localEmpresaConocido.includes(tag)
+                  ).length > 0 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg p-2 max-h-40 overflow-y-auto">
+                      <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase">Sugerencias:</div>
                       {existingEmpresaConocidoTags
                         .filter(
                           (tag) =>
-                            tag.toLowerCase().includes(newEmpresaConocidoInput.trim().toLowerCase()) &&
-                            !(Array.isArray(selectedContacto.empresaConocido)
-                              ? selectedContacto.empresaConocido
-                              : selectedContacto.empresaConocido
-                              ? [selectedContacto.empresaConocido]
-                              : []
-                            ).includes(tag)
+                            tag.toLowerCase().includes(newEmpresaConocidoInput.toLowerCase()) &&
+                            !localEmpresaConocido.includes(tag)
                         )
-                        .map((tag, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onMouseDown={() => {
+                        .map((tag) => (
+                          <div
+                            key={tag}
+                            onClick={() => {
                               handleAddTag('empresaConocido', tag);
                               setNewEmpresaConocidoInput('');
                               setShowEmpresaConocidoSuggestions(false);
                             }}
-                            className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                            className="px-2 py-1.5 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 rounded-lg cursor-pointer flex items-center justify-between"
                           >
-                            <Tag className="w-3 h-3 text-indigo-500" />
                             <span>{tag}</span>
-                          </button>
+                            <span className="text-[10px] text-slate-400 font-medium">+ Añadir</span>
+                          </div>
                         ))}
                     </div>
                   )}
-                </div>
               </div>
             </div>
 
             {/* Empresas anteriores */}
-            <div className="md:col-span-2 border-t border-slate-100 pt-4">
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
-                🏢 Empresas anteriores donde trabajó el contacto
+            <div className="md:col-span-2 border-t border-slate-100 pt-4 mt-2">
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center justify-between">
+                <span>Empresas anteriores del contacto</span>
+                <span className="text-[10px] text-slate-400 font-normal lowercase">(opcional)</span>
               </label>
-              <div className="flex flex-wrap gap-1.5 p-3 border border-slate-200 rounded-xl bg-slate-50">
-                {(selectedContacto.empresasAnteriores || []).map((tag, idx) => (
+              <p className="text-[11px] text-slate-500 mb-2">
+                Añade empresas o puestos previos para mantener su trayectoria profesional completa.
+              </p>
+
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {localEmpresasAnteriores.map((tag, idx) => (
                   <span
                     key={idx}
-                    className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-750 px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm hover:border-slate-300"
+                    className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full text-xs font-medium border border-indigo-200"
                   >
-                    {tag}
+                    <span>{tag}</span>
                     <button
                       type="button"
                       onClick={() => handleRemoveTag('empresasAnteriores', tag)}
-                      className="text-slate-400 hover:text-rose-600 font-bold ml-1 transition-colors cursor-pointer"
+                      className="text-indigo-400 hover:text-indigo-900 font-bold ml-1 cursor-pointer"
                     >
-                      ✕
+                      ×
                     </button>
                   </span>
                 ))}
-                <div className="relative flex items-center gap-1">
+              </div>
+
+              <div className="relative">
+                <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="Escribir empresa..."
                     value={newEmpresasAnterioresInput}
                     onChange={(e) => {
                       setNewEmpresasAnterioresInput(e.target.value);
                       setShowEmpresasAnterioresSuggestions(true);
                     }}
                     onFocus={() => setShowEmpresasAnterioresSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowEmpresasAnterioresSuggestions(false), 200)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -811,85 +1059,96 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                         }
                       }
                     }}
-                    className="bg-white border border-slate-200 rounded-full px-3 py-1 text-xs outline-none focus:border-indigo-500 transition-all w-36 font-medium"
+                    placeholder="Ej. Renault, Siemens, Telefónica..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:bg-white focus:border-indigo-500 outline-none"
                   />
-                  {showEmpresasAnterioresSuggestions && newEmpresasAnterioresInput.trim() && (
-                    <div className="absolute left-0 bottom-full mb-1 min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 divide-y divide-slate-50 overflow-hidden max-h-48 overflow-y-auto">
-                      {!existingEmpresasAnterioresTags.some(
-                        (t) => t.toLowerCase() === newEmpresasAnterioresInput.trim().toLowerCase()
-                      ) && (
-                        <button
-                          type="button"
-                          onMouseDown={() => {
-                            handleAddTag('empresasAnteriores', newEmpresasAnterioresInput.trim());
-                            setNewEmpresasAnterioresInput('');
-                            setShowEmpresasAnterioresSuggestions(false);
-                          }}
-                          className="w-full text-left px-3.5 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Crear nuevo: "{newEmpresasAnterioresInput.trim()}"</span>
-                        </button>
-                      )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newEmpresasAnterioresInput.trim()) {
+                        handleAddTag('empresasAnteriores', newEmpresasAnterioresInput.trim());
+                        setNewEmpresasAnterioresInput('');
+                        setShowEmpresasAnterioresSuggestions(false);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs cursor-pointer border border-indigo-200 transition-colors shrink-0"
+                  >
+                    + Añadir
+                  </button>
+                </div>
+
+                {showEmpresasAnterioresSuggestions &&
+                  newEmpresasAnterioresInput.trim().length > 0 &&
+                  existingEmpresasAnterioresTags.filter(
+                    (tag) =>
+                      tag.toLowerCase().includes(newEmpresasAnterioresInput.toLowerCase()) &&
+                      !localEmpresasAnteriores.includes(tag)
+                  ).length > 0 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg p-2 max-h-40 overflow-y-auto">
+                      <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase">Sugerencias:</div>
                       {existingEmpresasAnterioresTags
                         .filter(
                           (tag) =>
-                            tag.toLowerCase().includes(newEmpresasAnterioresInput.trim().toLowerCase()) &&
-                            !(selectedContacto.empresasAnteriores || []).includes(tag)
+                            tag.toLowerCase().includes(newEmpresasAnterioresInput.toLowerCase()) &&
+                            !localEmpresasAnteriores.includes(tag)
                         )
-                        .map((tag, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onMouseDown={() => {
+                        .map((tag) => (
+                          <div
+                            key={tag}
+                            onClick={() => {
                               handleAddTag('empresasAnteriores', tag);
                               setNewEmpresasAnterioresInput('');
                               setShowEmpresasAnterioresSuggestions(false);
                             }}
-                            className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                            className="px-2 py-1.5 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 rounded-lg cursor-pointer flex items-center justify-between"
                           >
-                            <Tag className="w-3 h-3 text-indigo-500" />
                             <span>{tag}</span>
-                          </button>
+                            <span className="text-[10px] text-slate-400 font-medium">+ Añadir</span>
+                          </div>
                         ))}
                     </div>
                   )}
-                </div>
               </div>
             </div>
 
             {/* Intereses del contacto */}
-            <div className="md:col-span-2 border-t border-slate-100 pt-4">
-              <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
-                ⚽ Intereses del contacto (Networking, hobbies, deportes, cine...)
+            <div className="md:col-span-2 border-t border-slate-100 pt-4 mt-2">
+              <label className="block text-xs font-bold text-slate-700 uppercase mb-1 flex items-center justify-between">
+                <span>Intereses / Hobbies / Especialidades del contacto</span>
+                <span className="text-[10px] text-slate-400 font-normal lowercase">(opcional)</span>
               </label>
-              <div className="flex flex-wrap gap-1.5 p-3 border border-slate-200 rounded-xl bg-slate-50">
-                {(selectedContacto.intereses || []).map((tag, idx) => (
+              <p className="text-[11px] text-slate-500 mb-2">
+                Temas de conversación, aficiones, deportes o intereses profesionales para conectar mejor.
+              </p>
+
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {localIntereses.map((tag, idx) => (
                   <span
                     key={idx}
-                    className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-750 px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm hover:border-slate-300"
+                    className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded-full text-xs font-medium border border-indigo-200"
                   >
-                    {tag}
+                    <span>{tag}</span>
                     <button
                       type="button"
                       onClick={() => handleRemoveTag('intereses', tag)}
-                      className="text-slate-400 hover:text-rose-600 font-bold ml-1 transition-colors cursor-pointer"
+                      className="text-indigo-400 hover:text-indigo-900 font-bold ml-1 cursor-pointer"
                     >
-                      ✕
+                      ×
                     </button>
                   </span>
                 ))}
-                <div className="relative flex items-center gap-1">
+              </div>
+
+              <div className="relative">
+                <div className="flex gap-2">
                   <input
                     type="text"
-                    placeholder="Escribir interés..."
                     value={newInteresesInput}
                     onChange={(e) => {
                       setNewInteresesInput(e.target.value);
                       setShowInteresesSuggestions(true);
                     }}
                     onFocus={() => setShowInteresesSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowInteresesSuggestions(false), 200)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
                         e.preventDefault();
@@ -900,50 +1159,55 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                         }
                       }
                     }}
-                    className="bg-white border border-slate-200 rounded-full px-3 py-1 text-xs outline-none focus:border-indigo-500 transition-all w-36 font-medium"
+                    placeholder="Ej. Golf, Ciclismo, Energías Renovables, IA..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:bg-white focus:border-indigo-500 outline-none"
                   />
-                  {showInteresesSuggestions && newInteresesInput.trim() && (
-                    <div className="absolute left-0 bottom-full mb-1 min-w-[220px] bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 divide-y divide-slate-50 overflow-hidden max-h-48 overflow-y-auto">
-                      {!existingInteresesTags.some(
-                        (t) => t.toLowerCase() === newInteresesInput.trim().toLowerCase()
-                      ) && (
-                        <button
-                          type="button"
-                          onMouseDown={() => {
-                            handleAddTag('intereses', newInteresesInput.trim());
-                            setNewInteresesInput('');
-                            setShowInteresesSuggestions(false);
-                          }}
-                          className="w-full text-left px-3.5 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Crear nuevo: "{newInteresesInput.trim()}"</span>
-                        </button>
-                      )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (newInteresesInput.trim()) {
+                        handleAddTag('intereses', newInteresesInput.trim());
+                        setNewInteresesInput('');
+                        setShowInteresesSuggestions(false);
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-xs cursor-pointer border border-indigo-200 transition-colors shrink-0"
+                  >
+                    + Añadir
+                  </button>
+                </div>
+
+                {showInteresesSuggestions &&
+                  newInteresesInput.trim().length > 0 &&
+                  existingInteresesTags.filter(
+                    (tag) =>
+                      tag.toLowerCase().includes(newInteresesInput.toLowerCase()) &&
+                      !localIntereses.includes(tag)
+                  ).length > 0 && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg p-2 max-h-40 overflow-y-auto">
+                      <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase">Sugerencias:</div>
                       {existingInteresesTags
                         .filter(
                           (tag) =>
-                            tag.toLowerCase().includes(newInteresesInput.trim().toLowerCase()) &&
-                            !(selectedContacto.intereses || []).includes(tag)
+                            tag.toLowerCase().includes(newInteresesInput.toLowerCase()) &&
+                            !localIntereses.includes(tag)
                         )
-                        .map((tag, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onMouseDown={() => {
+                        .map((tag) => (
+                          <div
+                            key={tag}
+                            onClick={() => {
                               handleAddTag('intereses', tag);
                               setNewInteresesInput('');
                               setShowInteresesSuggestions(false);
                             }}
-                            className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer"
+                            className="px-2 py-1.5 text-xs text-slate-700 hover:bg-indigo-50 hover:text-indigo-900 rounded-lg cursor-pointer flex items-center justify-between"
                           >
-                            <Tag className="w-3 h-3 text-indigo-500" />
                             <span>{tag}</span>
-                          </button>
+                            <span className="text-[10px] text-slate-400 font-medium">+ Añadir</span>
+                          </div>
                         ))}
                     </div>
                   )}
-                </div>
               </div>
             </div>
 
@@ -959,12 +1223,12 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                   </label>
                   <SearchSelect
                     placeholder="Escribe para buscar empresa..."
-                    value={selectedContacto.empresaId || ''}
+                    value={localEmpresaId || ''}
                     onChange={(val) => handleInlineSave('empresaId', val)}
                     options={empresas.map((e) => ({ value: e.id!, label: e.nombre, sublabel: e.tipo }))}
                   />
-                  {selectedContacto.empresaId && (() => {
-                    const emp = empresas.find((e) => e.id === selectedContacto.empresaId);
+                  {localEmpresaId && (() => {
+                    const emp = empresas.find((e) => e.id === localEmpresaId);
                     if (!emp) return null;
                     return (
                       <div className="mt-2.5">
@@ -1002,7 +1266,7 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                       {empresas
                         .filter(
                           (e) =>
-                            selectedContacto.empresaIds?.includes(e.id!) && e.id !== selectedContacto.empresaId
+                            localEmpresaIds.includes(e.id!) && e.id !== localEmpresaId
                         )
                         .map((e) => (
                           <span
@@ -1020,8 +1284,7 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                             <button
                               type="button"
                               onClick={() => {
-                                const currentIds = selectedContacto.empresaIds || [];
-                                const updatedIds = currentIds.filter((id) => id !== e.id);
+                                const updatedIds = localEmpresaIds.filter((id) => id !== e.id);
                                 handleInlineSave('empresaIds', updatedIds);
                               }}
                               className="text-indigo-400 hover:text-rose-600 font-bold ml-0.5 transition-colors cursor-pointer"
@@ -1032,7 +1295,7 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                         ))}
                       {empresas.filter(
                         (e) =>
-                          selectedContacto.empresaIds?.includes(e.id!) && e.id !== selectedContacto.empresaId
+                          localEmpresaIds.includes(e.id!) && e.id !== localEmpresaId
                       ).length === 0 && (
                         <span className="text-[10px] text-slate-400 p-0.5 italic">
                           Sin otras empresas vinculadas
@@ -1045,16 +1308,15 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                       value=""
                       onChange={(val) => {
                         if (!val) return;
-                        const currentIds = selectedContacto.empresaIds || [];
-                        if (!currentIds.includes(val)) {
-                          handleInlineSave('empresaIds', [...currentIds, val]);
+                        if (!localEmpresaIds.includes(val)) {
+                          handleInlineSave('empresaIds', [...localEmpresaIds, val]);
                         }
                       }}
                       options={empresas
                         .filter(
                           (e) =>
-                            e.id !== selectedContacto.empresaId &&
-                            !(selectedContacto.empresaIds || []).includes(e.id!)
+                            e.id !== localEmpresaId &&
+                            !localEmpresaIds.includes(e.id!)
                         )
                         .map((e) => ({ value: e.id!, label: e.nombre, sublabel: e.tipo }))}
                     />
@@ -1063,46 +1325,34 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
               </div>
             </div>
 
-            {/* Historial de Interacciones */}
-            <div className="md:col-span-2 border-t border-slate-100 pt-4 mt-2">
-              <div>
-                <h4 className="font-bold text-slate-800 text-xs uppercase mb-1 flex items-center justify-between">
-                  <span>📅 Historial de Interacciones del Contacto</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowAddInterFormCont(!showAddInterFormCont)}
-                      className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors shrink-0 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-100 cursor-pointer"
-                    >
-                      {showAddInterFormCont ? '✕ Cancelar' : '+ Nueva Interacción'}
-                    </button>
-                    <span className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-normal">
-                      {contactInteractions.length} {contactInteractions.length === 1 ? 'Interacción' : 'Interacciones'}
-                    </span>
-                  </div>
-                </h4>
-                <p className="text-[11px] text-slate-400 mb-3 font-normal">
-                  Muestra todas las reuniones, llamadas, correos o ferias asociadas a este contacto.
-                </p>
+            {/* Historial de Interacciones (solo para contactos existentes) */}
+            {!isCreating && selectedContacto?.id && (
+              <div className="md:col-span-2 border-t border-slate-100 pt-5">
+                <div className="flex justify-between items-center mb-4">
+                  <h4 className="font-bold text-slate-800 text-sm">Historial de Interacciones</h4>
+                  <button
+                    onClick={() => setShowAddInterFormCont(!showAddInterFormCont)}
+                    className="text-xs text-indigo-600 font-bold hover:underline cursor-pointer"
+                  >
+                    {showAddInterFormCont ? '✕ Cancelar' : '+ Nueva Interacción'}
+                  </button>
+                </div>
 
                 {showAddInterFormCont && (
                   <form
                     onSubmit={async (e) => {
                       e.preventDefault();
                       if (!newInterFormCont.asunto) return;
-
-                      const companyIds = selectedContacto.empresaId ? [selectedContacto.empresaId] : [];
-
+                      const companyIds = localEmpresaId ? [localEmpresaId] : [];
                       await onUpdateInteraccion({
                         asunto: newInterFormCont.asunto,
                         tipo: newInterFormCont.tipo,
                         fecha: newInterFormCont.fecha,
+                        descripcion: newInterFormCont.descripcion,
                         contactoId: selectedContacto.id!,
                         contactoIds: [selectedContacto.id!],
                         empresaIds: companyIds,
-                        descripcion: newInterFormCont.descripcion,
                         estado: newInterFormCont.estado,
-                        resolucion: '',
                         pasos: [],
                       });
                       setShowAddInterFormCont(false);
@@ -1114,16 +1364,13 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                         estado: 'pendiente',
                       });
                     }}
-                    className="mb-4 bg-indigo-50/40 border border-indigo-100 p-4 rounded-xl space-y-3 shadow-sm"
+                    className="mb-4 bg-indigo-50/50 p-4 rounded-xl space-y-3 border border-indigo-100"
                   >
-                    <h5 className="text-[11px] font-bold text-indigo-950 uppercase tracking-wide">
-                      Crear Nueva Interacción para {selectedContacto.nombre}
+                    <h5 className="text-xs font-bold text-indigo-900 uppercase">
+                      Crear Nueva Interacción para {localNombre || selectedContacto.nombre}
                     </h5>
-
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                        Asunto / Título *
-                      </label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase">Asunto *</label>
                       <input
                         type="text"
                         required
@@ -1131,72 +1378,62 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                         onChange={(e) =>
                           setNewInterFormCont({ ...newInterFormCont, asunto: e.target.value })
                         }
-                        className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none transition-all"
-                        placeholder="Ej. Reunión de seguimiento o llamada de tarifas"
+                        className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none"
                       />
                     </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Tipo</label>
+                        <label className="block text-xs font-bold text-slate-500 uppercase">Tipo</label>
                         <select
                           value={newInterFormCont.tipo}
                           onChange={(e) =>
                             setNewInterFormCont({ ...newInterFormCont, tipo: e.target.value as any })
                           }
-                          className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-indigo-500"
+                          className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs"
                         >
-                          <option value="reunion">🤝 Reunión</option>
-                          <option value="llamada">📞 Llamada</option>
-                          <option value="email">✉️ Correo</option>
-                          <option value="feria">🏢 Feria</option>
+                          <option value="reunion">Reunión</option>
+                          <option value="llamada">Llamada</option>
+                          <option value="email">Email</option>
+                          <option value="feria">Feria</option>
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase">Fecha *</label>
+                        <label className="block text-xs font-bold text-slate-500 uppercase">Fecha</label>
                         <input
                           type="date"
-                          required
                           value={newInterFormCont.fecha}
                           onChange={(e) =>
                             setNewInterFormCont({ ...newInterFormCont, fecha: e.target.value })
                           }
-                          className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1 px-2.5 text-xs outline-none focus:border-indigo-500"
+                          className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1 px-2 text-xs"
                         />
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                          Estado inicial
-                        </label>
+                        <label className="block text-xs font-bold text-slate-500 uppercase">Estado inicial</label>
                         <select
                           value={newInterFormCont.estado}
                           onChange={(e) =>
                             setNewInterFormCont({ ...newInterFormCont, estado: e.target.value as any })
                           }
-                          className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-indigo-500"
+                          className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs font-bold"
                         >
-                          <option value="pendiente">⏳ Pendiente</option>
-                          <option value="completada">✅ Completada</option>
+                          <option value="pendiente">Pendiente</option>
+                          <option value="completada">Completada</option>
                         </select>
                       </div>
                     </div>
-
                     <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                        Descripción / Detalles
-                      </label>
+                      <label className="block text-xs font-bold text-slate-500 uppercase">Notas</label>
                       <textarea
                         value={newInterFormCont.descripcion}
                         onChange={(e) =>
                           setNewInterFormCont({ ...newInterFormCont, descripcion: e.target.value })
                         }
                         rows={2}
-                        className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none transition-all resize-none"
-                        placeholder="Describe brevemente los temas tratados..."
+                        className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none resize-none"
                       />
                     </div>
-
-                    <div className="flex justify-end gap-2 pt-1">
+                    <div className="flex justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => setShowAddInterFormCont(false)}
@@ -1206,7 +1443,7 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                       </button>
                       <button
                         type="submit"
-                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg cursor-pointer shadow-sm"
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg cursor-pointer"
                       >
                         Guardar Interacción
                       </button>
@@ -1215,13 +1452,9 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                 )}
 
                 {contactInteractions.length === 0 ? (
-                  <div className="text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                    <p className="text-xs text-slate-500 font-medium">
-                      No se han registrado interacciones con este contacto.
-                    </p>
-                  </div>
+                  <p className="text-xs text-slate-400 italic">No hay interacciones registradas con este contacto.</p>
                 ) : (
-                  <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
+                  <div className="space-y-3">
                     {contactInteractions
                       .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
                       .map((i) => {
@@ -1230,43 +1463,35 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                           <div
                             key={i.id}
                             onClick={() => onOpenInteraccion?.(i.id!)}
-                            className="group flex flex-col p-3 rounded-xl border border-slate-200 bg-white hover:border-indigo-400 hover:shadow-sm transition-all cursor-pointer"
+                            className="p-3 bg-slate-50 hover:bg-indigo-50/50 rounded-xl border border-slate-200/80 transition-all cursor-pointer group"
                           >
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="font-bold text-xs text-slate-800 group-hover:text-indigo-600 transition-colors">
+                                {i.asunto}
+                              </span>
                               <div className="flex items-center gap-2">
                                 <span
-                                  className={`w-2 h-2 rounded-full ${
-                                    isCompletada ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'
-                                  }`}
-                                />
-                                <p className="font-semibold text-slate-800 text-xs group-hover:text-indigo-600 transition-colors">
-                                  {i.asunto}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-150">
-                                  {i.fecha}
-                                </span>
-                                <span
-                                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                    i.tipo === 'reunion'
-                                      ? 'bg-amber-50 text-amber-700 border border-amber-150'
-                                      : i.tipo === 'llamada'
-                                      ? 'bg-blue-50 text-blue-700 border border-blue-150'
-                                      : i.tipo === 'email'
-                                      ? 'bg-indigo-50 text-indigo-700 border border-indigo-150'
-                                      : 'bg-purple-50 text-purple-700 border border-purple-150'
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                    isCompletada
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : 'bg-amber-100 text-amber-800'
                                   }`}
                                 >
-                                  {i.tipo}
+                                  {isCompletada ? 'Completada' : 'Pendiente'}
                                 </span>
+                                <span className="text-[11px] text-slate-400">{i.fecha}</span>
                               </div>
                             </div>
-                            <p className="text-[11px] text-slate-500 line-clamp-1 mt-1 pl-4">
-                              {i.descripcion || 'Sin descripción'}
-                            </p>
+                            <span className="inline-block text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 bg-white border border-slate-200 text-slate-500 rounded mb-1">
+                              {i.tipo}
+                            </span>
+                            {i.descripcion && (
+                              <p className="text-xs text-slate-600 mt-1 line-clamp-2 leading-relaxed">
+                                {i.descripcion}
+                              </p>
+                            )}
                             {i.resolucion && (
-                              <div className="text-[10px] text-emerald-700 bg-emerald-50/50 rounded p-1.5 mt-1.5 pl-4 border-l-2 border-emerald-400 font-medium">
+                              <div className="mt-2 p-2 bg-emerald-50/60 border border-emerald-100 rounded-lg text-xs text-emerald-950">
                                 <span className="font-bold text-[9px] uppercase tracking-wider block text-emerald-800 mb-0.5">
                                   Resolución:
                                 </span>
@@ -1279,18 +1504,51 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                   </div>
                 )}
               </div>
-            </div>
+            )}
           </div>
         </div>
 
         {/* Footer */}
-        <div className="p-6 bg-slate-50 border-t border-slate-100 text-right">
-          <button
-            onClick={onClose}
-            className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors shadow-sm text-sm cursor-pointer"
-          >
-            Cerrar
-          </button>
+        <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+          {isCreating ? (
+            <>
+              <div className="text-xs text-slate-500 font-medium hidden sm:block">
+                Todos los datos se guardarán conjuntamente en el nuevo contacto.
+              </div>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-2xs"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveNewContacto}
+                  disabled={isSavingNew || !localNombre.trim() || !localEmpresaId || !!duplicateContacto}
+                  title={duplicateContacto ? 'Ya existe un contacto con estos datos' : undefined}
+                  className={`px-5 py-2 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm ${
+                    isSavingNew || !localNombre.trim() || !localEmpresaId || !!duplicateContacto
+                      ? 'bg-slate-300 cursor-not-allowed opacity-75'
+                      : 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer shadow-md'
+                  }`}
+                >
+                  <Plus className="w-4 h-4" />
+                  {isSavingNew ? 'Guardando...' : duplicateContacto ? 'Contacto Duplicado' : 'Guardar Contacto'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex justify-end w-full">
+              <button
+                onClick={onClose}
+                className="px-5 py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors shadow-2xs text-xs cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

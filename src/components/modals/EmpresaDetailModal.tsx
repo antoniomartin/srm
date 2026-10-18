@@ -198,6 +198,7 @@ export interface EmpresaDetailModalProps {
   onUpdateEmpresa: (emp: Empresa) => Promise<void>;
   onDeleteEmpresa: (id: string) => Promise<void>;
   onOpenContacto?: (id: string) => void;
+  onOpenCreateContacto?: (empresaId: string) => void;
   onOpenInteraccion?: (id: string) => void;
   onOpenEmpresa?: (id: string) => void;
   onAddRelacion: (fabId: string, distId: string, pref: 'si' | 'no') => Promise<void>;
@@ -232,6 +233,7 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
   onUpdateEmpresa,
   onDeleteEmpresa,
   onOpenContacto,
+  onOpenCreateContacto,
   onOpenInteraccion,
   onOpenEmpresa,
   onAddRelacion,
@@ -283,52 +285,6 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
   const [docUrl, setDocUrl] = useState('');
 
   // Inline forms
-  const [showAddContactForm, setShowAddContactForm] = useState(false);
-  const [newContactForm, setNewContactForm] = useState({
-    nombre: '',
-    cargo: '',
-    telefono: '',
-    email: '',
-    reportaA: '' as string | null,
-    foto: '',
-  });
-  const [inlineContactError, setInlineContactError] = useState<string | null>(null);
-
-  const duplicateInlineContact = useMemo(() => {
-    if (!selectedEmpresa) return null;
-    const rawName = (newContactForm.nombre || '').trim().toLowerCase();
-    const rawEmail = (newContactForm.email || '').trim().toLowerCase();
-    const rawTel = (newContactForm.telefono || '').replace(/\D/g, '');
-
-    if (!rawName && !rawEmail && !rawTel) return null;
-
-    const normalizePersonName = (str: string) => {
-      return str
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .trim();
-    };
-
-    const normName = normalizePersonName(rawName);
-
-    return contactos.find((c) => {
-      if (rawEmail && c.email && c.email.trim().toLowerCase() === rawEmail) return true;
-      if (rawTel && rawTel.length >= 8 && c.telefono) {
-        const existTel = c.telefono.replace(/\D/g, '');
-        if (existTel === rawTel || existTel.endsWith(rawTel) || rawTel.endsWith(existTel)) return true;
-      }
-      if (normName.length >= 3) {
-        const existNorm = normalizePersonName(c.nombre || '');
-        if (existNorm === normName) {
-          const inSameEmpresa = c.empresaId === selectedEmpresa.id || c.empresaIds?.includes(selectedEmpresa.id!);
-          if (inSameEmpresa) return true;
-        }
-      }
-      return false;
-    }) || null;
-  }, [newContactForm.nombre, newContactForm.email, newContactForm.telefono, contactos, selectedEmpresa]);
-
   const [showAddInterFormEmp, setShowAddInterFormEmp] = useState(false);
   const [newInterFormEmp, setNewInterFormEmp] = useState({
     asunto: '',
@@ -1223,169 +1179,12 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => setShowAddContactForm(!showAddContactForm)}
-                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-100 transition-colors cursor-pointer shrink-0"
+                onClick={() => onOpenCreateContacto?.(selectedEmpresa.id!)}
+                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-150 transition-all cursor-pointer shrink-0 shadow-2xs"
               >
-                {showAddContactForm ? '✕ Cancelar' : '+ Nuevo Contacto'}
+                <Plus className="w-3.5 h-3.5" /> + Nuevo Contacto
               </button>
             </div>
-
-            {showAddContactForm && (
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!newContactForm.nombre) return;
-
-                  if (duplicateInlineContact) {
-                    setInlineContactError(`Ya existe un contacto con estos datos registrado: "${duplicateInlineContact.nombre}".`);
-                    return;
-                  }
-
-                  await onUpdateContacto({
-                    nombre: newContactForm.nombre,
-                    cargo: newContactForm.cargo,
-                    telefono: newContactForm.telefono,
-                    email: newContactForm.email,
-                    reportaA: newContactForm.reportaA,
-                    foto: newContactForm.foto || '',
-                    empresaId: selectedEmpresa.id!,
-                    estado: 'activo',
-                    fecha_creacion: new Date().toISOString(),
-                    notas: '',
-                  });
-                  setShowAddContactForm(false);
-                  setInlineContactError(null);
-                  setNewContactForm({ nombre: '', cargo: '', telefono: '', email: '', reportaA: null, foto: '' });
-                }}
-                className="mb-4 bg-indigo-50/40 border border-indigo-100 p-4 rounded-xl space-y-3 shadow-sm"
-              >
-                <h5 className="text-[11px] font-bold text-indigo-950 uppercase tracking-wide">
-                  Crear Nuevo Contacto Asociado
-                </h5>
-
-                {/* Duplicate Inline Contact Alert */}
-                {duplicateInlineContact && (
-                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2 shadow-2xs">
-                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <p className="font-bold text-amber-950">⚠️ Este contacto ya existe</p>
-                      <p className="mt-0.5 text-amber-800 leading-relaxed">
-                        Ya existe un contacto registrado como <strong>"{duplicateInlineContact.nombre}"</strong>
-                        {duplicateInlineContact.cargo ? ` (${duplicateInlineContact.cargo})` : ''}
-                        {duplicateInlineContact.email ? ` • ${duplicateInlineContact.email}` : ''}.
-                      </p>
-                      {onOpenContacto && duplicateInlineContact.id && (
-                        <button
-                          type="button"
-                          onClick={() => onOpenContacto(duplicateInlineContact.id!)}
-                          className="mt-1.5 inline-flex items-center gap-1 font-bold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
-                        >
-                          Abrir ficha del contacto existente →
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {inlineContactError && (
-                  <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-1.5">
-                    <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
-                    <span>{inlineContactError}</span>
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                    Nombre Completo *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={newContactForm.nombre}
-                    onChange={(e) => {
-                      setInlineContactError(null);
-                      setNewContactForm({ ...newContactForm, nombre: e.target.value });
-                    }}
-                    className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none"
-                    placeholder="Ej. Juan Pérez"
-                  />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Cargo / Rol</label>
-                    <input
-                      type="text"
-                      value={newContactForm.cargo}
-                      onChange={(e) => setNewContactForm({ ...newContactForm, cargo: e.target.value })}
-                      className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs outline-none focus:border-indigo-500"
-                      placeholder="Ej. Director de Compras"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                      Superior Jerárquico
-                    </label>
-                    <select
-                      value={newContactForm.reportaA || ''}
-                      onChange={(e) =>
-                        setNewContactForm({ ...newContactForm, reportaA: e.target.value || null })
-                      }
-                      className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-indigo-500"
-                    >
-                      <option value="">Ninguno / Líder principal</option>
-                      {contactosEmpresa.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.nombre} ({c.cargo || 'Sin cargo'})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Teléfono</label>
-                    <input
-                      type="text"
-                      value={newContactForm.telefono}
-                      onChange={(e) => setNewContactForm({ ...newContactForm, telefono: e.target.value })}
-                      className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs outline-none focus:border-indigo-500"
-                      placeholder="Ej. +34 600..."
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Email</label>
-                    <input
-                      type="email"
-                      value={newContactForm.email}
-                      onChange={(e) => setNewContactForm({ ...newContactForm, email: e.target.value })}
-                      className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs outline-none focus:border-indigo-500"
-                      placeholder="juan@empresa.com"
-                    />
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddContactForm(false)}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!!duplicateInlineContact}
-                    title={duplicateInlineContact ? 'Ya existe un contacto con estos datos' : undefined}
-                    className={`px-3 py-1.5 text-white text-xs font-bold rounded-lg transition-all ${
-                      duplicateInlineContact
-                        ? 'bg-slate-300 cursor-not-allowed opacity-75'
-                        : 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer shadow-sm'
-                    }`}
-                  >
-                    {duplicateInlineContact ? 'Contacto ya existente' : 'Guardar Contacto'}
-                  </button>
-                </div>
-              </form>
-            )}
 
             {/* Organigrama modular */}
             <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-150">

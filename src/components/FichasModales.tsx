@@ -51,6 +51,11 @@ export interface FichasModalesProps {
   onGeocodeManual: (empId: string) => void;
   onGeneratePDF: (emp: Empresa) => void;
   scores: { [id: string]: { nivel: string; label: string; dias: number | null } };
+
+  // Contact creation
+  isCreatingContacto?: boolean;
+  onCreateContacto?: (contacto: Omit<Contacto, 'id'>) => Promise<string | undefined>;
+  onOpenCreateContacto?: (empresaId?: string) => void;
 }
 
 export const FichasModales: React.FC<FichasModalesProps> = ({
@@ -63,6 +68,9 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
   onOpenContacto,
   onOpenInteraccion,
   onOpenEmpresa,
+  isCreatingContacto,
+  onCreateContacto,
+  onOpenCreateContacto,
   empresas,
   contactos,
   interacciones,
@@ -141,6 +149,7 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
         onUpdateContacto={onUpdateContacto}
         onUpdateInteraccion={onUpdateInteraccion}
         askConfirmation={askConfirmation}
+        onOpenCreateContacto={onOpenCreateContacto}
       />
 
       <ContactoDetailModal
@@ -155,6 +164,8 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
         onOpenEmpresa={onOpenEmpresa}
         onOpenInteraccion={onOpenInteraccion}
         askConfirmation={askConfirmation}
+        isCreating={isCreatingContacto}
+        onCreateContacto={onCreateContacto}
       />
 
       <InteraccionDetailModal
