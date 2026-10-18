@@ -305,7 +305,6 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
       setEstadoSeleccionado(selectedEmpresa.estado || 'prospecto');
       setAiResponse(null);
       setAiError('');
-      setShowAddContactForm(false);
       setShowAddInterFormEmp(false);
       setShowAddDocForm(false);
     }
