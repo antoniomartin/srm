@@ -1210,204 +1210,6 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
             </div>
           </div>
 
-          {/* Documentos & Certificaciones */}
-          <div className="border-t border-slate-150 pt-5">
-            <div className="flex items-center justify-between mb-2">
-              <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
-                <FileText className="w-4 h-4 text-indigo-600" />
-                <span>Documentos, Certificados y Homologaciones</span>
-              </h4>
-              <button
-                type="button"
-                onClick={() => setShowAddDocForm(!showAddDocForm)}
-                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-100 transition-colors cursor-pointer"
-              >
-                {showAddDocForm ? '✕ Cancelar' : '+ Añadir Documento'}
-              </button>
-            </div>
-            <p className="text-[11px] text-slate-400 mb-3 font-normal">
-              Gestiona certificados de calidad (ISO 9001/14001), pólizas de seguro, acuerdos de confidencialidad y fichas técnicas.
-            </p>
-
-            {showAddDocForm && (
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!docNombre.trim()) return;
-                  await onAddDocumento(
-                    selectedEmpresa.id!,
-                    docNombre.trim(),
-                    docUrl.trim(),
-                    docCaducidad || null
-                  );
-                  setDocNombre('');
-                  setDocCaducidad('');
-                  setDocUrl('');
-                  setShowAddDocForm(false);
-                }}
-                className="mb-4 bg-indigo-50/40 border border-indigo-100 p-4 rounded-xl space-y-3 shadow-sm"
-              >
-                <h5 className="text-[11px] font-bold text-indigo-950 uppercase tracking-wide">
-                  Registrar Nuevo Documento / Certificado
-                </h5>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                      Nombre del documento *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ej. Certificado ISO 9001:2015, Seguro RC..."
-                      value={docNombre}
-                      onChange={(e) => setDocNombre(e.target.value)}
-                      className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                      Fecha de Caducidad (Opcional)
-                    </label>
-                    <input
-                      type="date"
-                      value={docCaducidad}
-                      onChange={(e) => setDocCaducidad(e.target.value)}
-                      className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1 px-2.5 text-xs outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                    URL o Enlace al Archivo (Google Drive / OneDrive / Web)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="https://..."
-                    value={docUrl}
-                    onChange={(e) => setDocUrl(e.target.value)}
-                    className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none"
-                  />
-                </div>
-                <div className="flex justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddDocForm(false)}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg cursor-pointer shadow-sm"
-                  >
-                    Guardar Documento
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {docsEmpresa.length === 0 ? (
-              <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                <p className="text-xs text-slate-400 italic">No hay documentos registrados para esta empresa.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {docsEmpresa.map((doc) => {
-                  let diasRestantes: number | null = null;
-                  let isExpired = false;
-                  let isExpiringSoon = false;
-
-                  if (doc.fechaCaducidad) {
-                    const fCad = new Date(doc.fechaCaducidad + 'T12:00:00');
-                    diasRestantes = Math.ceil((fCad.getTime() - new Date().getTime()) / 86400000);
-                    isExpired = diasRestantes <= 0;
-                    isExpiringSoon = diasRestantes > 0 && diasRestantes <= 30;
-                  }
-
-                  return (
-                    <div
-                      key={doc.id}
-                      className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                        isExpired
-                          ? 'bg-rose-50/50 border-rose-200'
-                          : isExpiringSoon
-                          ? 'bg-amber-50/50 border-amber-200'
-                          : 'bg-white border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div
-                          className={`p-2 rounded-lg ${
-                            isExpired
-                              ? 'bg-rose-100 text-rose-700'
-                              : isExpiringSoon
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-indigo-50 text-indigo-700'
-                          }`}
-                        >
-                          <FileText className="w-4 h-4 shrink-0" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2">
-                            <p className="font-semibold text-slate-800 text-xs truncate">{doc.nombre}</p>
-                            {doc.url && (
-                              <a
-                                href={doc.url.startsWith('http') ? doc.url : `https://${doc.url}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-indigo-600 hover:text-indigo-800"
-                                title="Abrir enlace"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
-                            <span>Registrado: {new Date(doc.fecha).toLocaleDateString()}</span>
-                            {doc.fechaCaducidad && (
-                              <span
-                                className={`font-semibold px-1.5 py-0.2 rounded ${
-                                  isExpired
-                                    ? 'bg-rose-100 text-rose-700'
-                                    : isExpiringSoon
-                                    ? 'bg-amber-100 text-amber-800 font-bold'
-                                    : 'bg-slate-100 text-slate-600'
-                                }`}
-                              >
-                                {isExpired
-                                  ? 'Caducado'
-                                  : isExpiringSoon
-                                  ? `Caduca en ${diasRestantes} días`
-                                  : `Caduca: ${doc.fechaCaducidad}`}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          askConfirmation(
-                            "¿Eliminar documento?",
-                            `¿Estás seguro de que deseas eliminar el documento "${doc.nombre}"?`,
-                            () => onDeleteDocumento(doc.id!),
-                            true,
-                            "Eliminar"
-                          );
-                        }}
-                        className="text-slate-400 hover:text-rose-600 p-1 rounded-lg transition-colors cursor-pointer"
-                        title="Eliminar documento"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
           {/* Organigrama y Contactos */}
           <div className="border-t border-slate-150 pt-5">
             <div className="flex justify-between items-start mb-2">
@@ -2116,6 +1918,204 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
               rows={4}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium resize-none leading-relaxed text-slate-700 shadow-sm"
             />
+          </div>
+
+          {/* Documentos & Certificaciones */}
+          <div className="border-t border-slate-200 pt-5">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
+                <FileText className="w-4 h-4 text-indigo-600" />
+                <span>Documentos, Certificados y Homologaciones</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setShowAddDocForm(!showAddDocForm)}
+                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-100 transition-colors cursor-pointer"
+              >
+                {showAddDocForm ? '✕ Cancelar' : '+ Añadir Documento'}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-400 mb-3 font-normal">
+              Gestiona certificados de calidad (ISO 9001/14001), pólizas de seguro, acuerdos de confidencialidad y fichas técnicas.
+            </p>
+
+            {showAddDocForm && (
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!docNombre.trim()) return;
+                  await onAddDocumento(
+                    selectedEmpresa.id!,
+                    docNombre.trim(),
+                    docUrl.trim(),
+                    docCaducidad || null
+                  );
+                  setDocNombre('');
+                  setDocCaducidad('');
+                  setDocUrl('');
+                  setShowAddDocForm(false);
+                }}
+                className="mb-4 bg-indigo-50/40 border border-indigo-100 p-4 rounded-xl space-y-3 shadow-sm"
+              >
+                <h5 className="text-[11px] font-bold text-indigo-950 uppercase tracking-wide">
+                  Registrar Nuevo Documento / Certificado
+                </h5>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">
+                      Nombre del documento *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej. Certificado ISO 9001:2015, Seguro RC..."
+                      value={docNombre}
+                      onChange={(e) => setDocNombre(e.target.value)}
+                      className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">
+                      Fecha de Caducidad (Opcional)
+                    </label>
+                    <input
+                      type="date"
+                      value={docCaducidad}
+                      onChange={(e) => setDocCaducidad(e.target.value)}
+                      className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1 px-2.5 text-xs outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase">
+                    URL o Enlace al Archivo (Google Drive / OneDrive / Web)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="https://..."
+                    value={docUrl}
+                    onChange={(e) => setDocUrl(e.target.value)}
+                    className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none"
+                  />
+                </div>
+                <div className="flex justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowAddDocForm(false)}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg cursor-pointer shadow-sm"
+                  >
+                    Guardar Documento
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {docsEmpresa.length === 0 ? (
+              <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                <p className="text-xs text-slate-400 italic">No hay documentos registrados para esta empresa.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {docsEmpresa.map((doc) => {
+                  let diasRestantes: number | null = null;
+                  let isExpired = false;
+                  let isExpiringSoon = false;
+
+                  if (doc.fechaCaducidad) {
+                    const fCad = new Date(doc.fechaCaducidad + 'T12:00:00');
+                    diasRestantes = Math.ceil((fCad.getTime() - new Date().getTime()) / 86400000);
+                    isExpired = diasRestantes <= 0;
+                    isExpiringSoon = diasRestantes > 0 && diasRestantes <= 30;
+                  }
+
+                  return (
+                    <div
+                      key={doc.id}
+                      className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                        isExpired
+                          ? 'bg-rose-50/50 border-rose-200'
+                          : isExpiringSoon
+                          ? 'bg-amber-50/50 border-amber-200'
+                          : 'bg-white border-slate-200'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div
+                          className={`p-2 rounded-lg ${
+                            isExpired
+                              ? 'bg-rose-100 text-rose-700'
+                              : isExpiringSoon
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-indigo-50 text-indigo-700'
+                          }`}
+                        >
+                          <FileText className="w-4 h-4 shrink-0" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-slate-800 text-xs truncate">{doc.nombre}</p>
+                            {doc.url && (
+                              <a
+                                href={doc.url.startsWith('http') ? doc.url : `https://${doc.url}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-indigo-600 hover:text-indigo-800"
+                                title="Abrir enlace"
+                              >
+                                <ExternalLink className="w-3.5 h-3.5" />
+                              </a>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
+                            <span>Registrado: {new Date(doc.fecha).toLocaleDateString()}</span>
+                            {doc.fechaCaducidad && (
+                              <span
+                                className={`font-semibold px-1.5 py-0.2 rounded ${
+                                  isExpired
+                                    ? 'bg-rose-100 text-rose-700'
+                                    : isExpiringSoon
+                                    ? 'bg-amber-100 text-amber-800 font-bold'
+                                    : 'bg-slate-100 text-slate-600'
+                                }`}
+                              >
+                                {isExpired
+                                  ? 'Caducado'
+                                  : isExpiringSoon
+                                  ? `Caduca en ${diasRestantes} días`
+                                  : `Caduca: ${doc.fechaCaducidad}`}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          askConfirmation(
+                            "¿Eliminar documento?",
+                            `¿Estás seguro de que deseas eliminar el documento "${doc.nombre}"?`,
+                            () => onDeleteDocumento(doc.id!),
+                            true,
+                            "Eliminar"
+                          );
+                        }}
+                        className="text-slate-400 hover:text-rose-600 p-1 rounded-lg transition-colors cursor-pointer"
+                        title="Eliminar documento"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Formulario de Evaluación de Desempeño (KPIs OTIF) */}
