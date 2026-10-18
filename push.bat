@@ -12,8 +12,12 @@ echo.
 
 set "GIT_CMD=C:\Users\FamiliaMMV\AppData\Local\Microsoft\WinGet\Packages\Git.MinGit_Microsoft.Winget.Source_8wekyb3d8bbwe\cmd\git.exe"
 if exist "%GIT_CMD%" (
+    "%GIT_CMD%" add -A
+    "%GIT_CMD%" commit -m "Actualizacion SRM: mejoras y ajustes" 2>nul
     "%GIT_CMD%" push origin main
 ) else (
+    git add -A
+    git commit -m "Actualizacion SRM: mejoras y ajustes" 2>nul
     git push origin main
 )
 
