@@ -127,6 +127,8 @@ export default function App() {
   const [newCompany, setNewCompany] = useState<Partial<Empresa>>({
     nombre: '', tipo: 'fabricante', estado: 'prospecto', nit: '', direccion: '', cp: '', ciudad: '', provincia: '', pais: 'España', telefono: '', email: '', web: '', unspscCodes: []
   });
+  const [addCompanyError, setAddCompanyError] = useState<string | null>(null);
+  const [addContactError, setAddContactError] = useState<string | null>(null);
 
   const [newCompanyUnspscSearch, setNewCompanyUnspscSearch] = useState('');
   const [newCompanyUnspscResults, setNewCompanyUnspscResults] = useState<UnspscCode[]>([]);
@@ -211,7 +213,7 @@ export default function App() {
     return () => clearTimeout(delayDebounce);
   }, [mainUnspscSearch]);
   const [newContacto, setNewContacto] = useState<Partial<Contacto>>({
-    nombre: '', empresaId: '', cargo: '', reportaA: null, telefono: '', email: '', linkedin: '', notas: '', estado: 'activo'
+    nombre: '', empresaId: '', cargo: '', reportaA: null, telefono: '', email: '', linkedin: '', notas: '', estado: 'activo', motivoInactivo: ''
   });
   const [newInteraccion, setNewInteraccion] = useState<Partial<Interaccion>>({
     asunto: '', tipo: 'reunion', fecha: new Date().toISOString().slice(0, 10), fechaLimite: null, descripcion: '', estado: 'pendiente', resolucion: ''
@@ -445,7 +447,11 @@ export default function App() {
     let list = [...contactos];
     const queryStr = quickFilter.toLowerCase().trim();
     if (queryStr) {
-      list = list.filter(c => c.nombre.toLowerCase().includes(queryStr) || c.cargo.toLowerCase().includes(queryStr));
+      list = list.filter(c => 
+        (c.nombre || '').toLowerCase().includes(queryStr) || 
+        (c.cargo || '').toLowerCase().includes(queryStr) ||
+        (c.motivoInactivo || '').toLowerCase().includes(queryStr)
+      );
     }
     
     if (sortBy === 'nombre_asc') list.sort((a, b) => a.nombre.localeCompare(b.nombre));
@@ -558,8 +564,9 @@ export default function App() {
     const matchedEmpresaIds = new Set(matchedEmpresas.map(e => e.id));
 
     const matchedContactos = contactos.filter(c => {
-      const directMatch = c.nombre.toLowerCase().includes(term) || 
+      const directMatch = (c.nombre || '').toLowerCase().includes(term) || 
                           (c.cargo && c.cargo.toLowerCase().includes(term)) ||
+                          (c.motivoInactivo && c.motivoInactivo.toLowerCase().includes(term)) ||
                           (c.email && c.email.toLowerCase().includes(term)) ||
                           (c.telefono && c.telefono.toLowerCase().includes(term));
       if (directMatch) return true;
@@ -593,10 +600,125 @@ export default function App() {
     };
   }, [globalSearch, empresas, contactos, interacciones]);
 
+  // Duplicate Company check
+  const duplicateEmpresa = useMemo(() => {
+    const rawName = (newCompany.nombre || '').trim().toLowerCase();
+    const rawNit = (newCompany.nit || '').replace(/[\s\-\.]/g, '').toLowerCase();
+
+    if (!rawName && !rawNit) return null;
+
+    const normalizeCompanyName = (str: string) => {
+      return str
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\b(s\.?l\.?u?|s\.?a\.?u?|sociedad limitada|sociedad anonima)\b/gi, '')
+        .replace(/[^\w\s]/gi, '')
+        .trim();
+    };
+
+    const normInput = normalizeCompanyName(rawName);
+
+    return empresas.find(e => {
+      // 1. Check CIF / NIT
+      if (rawNit && rawNit.length >= 5 && e.nit) {
+        const existNit = e.nit.replace(/[\s\-\.]/g, '').toLowerCase();
+        if (existNit && existNit === rawNit) {
+          return true;
+        }
+      }
+
+      // 2. Check Name exact or normalized
+      if (rawName.length >= 2) {
+        const existRaw = (e.nombre || '').trim().toLowerCase();
+        if (existRaw === rawName) return true;
+
+        if (normInput.length >= 3) {
+          const normExist = normalizeCompanyName(e.nombre || '');
+          if (normExist === normInput) return true;
+        }
+      }
+
+      return false;
+    }) || null;
+  }, [newCompany.nombre, newCompany.nit, empresas]);
+
+  // Duplicate Contact check
+  const duplicateContacto = useMemo(() => {
+    const rawName = (newContacto.nombre || '').trim().toLowerCase();
+    const rawEmail = (newContacto.email || '').trim().toLowerCase();
+    const rawTel = (newContacto.telefono || '').replace(/\D/g, '');
+
+    if (!rawName && !rawEmail && !rawTel) return null;
+
+    const normalizePersonName = (str: string) => {
+      return str
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+    };
+
+    const normName = normalizePersonName(rawName);
+
+    return contactos.find(c => {
+      // 1. Email exact match
+      if (rawEmail && c.email) {
+        if (c.email.trim().toLowerCase() === rawEmail) return true;
+      }
+
+      // 2. Phone match (at least 8 digits)
+      if (rawTel && rawTel.length >= 8 && c.telefono) {
+        const existTel = c.telefono.replace(/\D/g, '');
+        if (existTel && (existTel === rawTel || existTel.endsWith(rawTel) || rawTel.endsWith(existTel))) {
+          return true;
+        }
+      }
+
+      // 3. Name match in the same company
+      if (normName.length >= 3 && newContacto.empresaId) {
+        const existNorm = normalizePersonName(c.nombre || '');
+        if (existNorm === normName) {
+          const inSameEmpresa = c.empresaId === newContacto.empresaId || 
+                                (c.empresaIds && c.empresaIds.includes(newContacto.empresaId));
+          if (inSameEmpresa) return true;
+        }
+      }
+
+      return false;
+    }) || null;
+  }, [newContacto.nombre, newContacto.email, newContacto.telefono, newContacto.empresaId, contactos]);
+
+  // Warning if contact name exists in ANOTHER company
+  const duplicateContactInOtherCompany = useMemo(() => {
+    const rawName = (newContacto.nombre || '').trim().toLowerCase();
+    if (!rawName || rawName.length < 3 || duplicateContacto) return null;
+
+    const normalizePersonName = (str: string) => {
+      return str
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim();
+    };
+
+    const normName = normalizePersonName(rawName);
+    return contactos.find(c => {
+      const existNorm = normalizePersonName(c.nombre || '');
+      return existNorm === normName && c.empresaId !== newContacto.empresaId;
+    }) || null;
+  }, [newContacto.nombre, newContacto.empresaId, contactos, duplicateContacto]);
+
   // Add Company Submit
   const handleAddCompanySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCompany.nombre) return;
+
+    if (duplicateEmpresa) {
+      setAddCompanyError(`Ya existe una empresa registrada con estos datos: "${duplicateEmpresa.nombre}". Revisa la empresa existente antes de crear un duplicado.`);
+      return;
+    }
+
     await saveDocument('empresas', { 
       ...newCompany, 
       tags: [], 
@@ -604,6 +726,7 @@ export default function App() {
       unspscCodes: newCompany.unspscCodes || [] 
     });
     setShowAddCompanyModal(false);
+    setAddCompanyError(null);
     setNewCompany({
       nombre: '', tipo: 'fabricante', estado: 'prospecto', nit: '', direccion: '', cp: '', ciudad: '', provincia: '', pais: 'España', telefono: '', email: '', web: '', unspscCodes: []
     });
@@ -613,10 +736,18 @@ export default function App() {
   const handleAddContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newContacto.nombre || !newContacto.empresaId) return;
+
+    if (duplicateContacto) {
+      const targetEmpresa = empresas.find(emp => emp.id === duplicateContacto.empresaId);
+      setAddContactError(`Ya existe un contacto registrado con estos datos: "${duplicateContacto.nombre}"${targetEmpresa ? ` en "${targetEmpresa.nombre}"` : ''}. Revisa su ficha antes de crear un duplicado.`);
+      return;
+    }
+
     await saveDocument('contactos', newContacto);
     setShowAddContactModal(false);
+    setAddContactError(null);
     setNewContacto({
-      nombre: '', empresaId: '', cargo: '', reportaA: null, telefono: '', email: '', linkedin: '', notas: '', estado: 'activo'
+      nombre: '', empresaId: '', cargo: '', reportaA: null, telefono: '', email: '', linkedin: '', notas: '', estado: 'activo', motivoInactivo: ''
     });
   };
 
@@ -1563,6 +1694,11 @@ export default function App() {
         onDeleteInteraccion={async (id) => deleteDocument('interacciones', id)}
         onAddRelacion={async (fId, dId, pref) => saveDocument('relaciones', { fabricanteId: fId, distribuidorId: dId, preferente: pref })}
         onAddEmpresaRapida={async (nombre, tipo) => {
+          const cleanName = (nombre || '').trim().toLowerCase();
+          const existing = empresas.find(e => e.nombre.trim().toLowerCase() === cleanName);
+          if (existing) {
+            return existing.id;
+          }
           const newId = await saveDocument('empresas', {
             nombre,
             tipo,
@@ -2021,12 +2157,50 @@ export default function App() {
               </button>
             </div>
             <form onSubmit={handleAddCompanySubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              {/* Duplicate Company Alert */}
+              {duplicateEmpresa && (
+                <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2.5 shadow-2xs">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-bold text-amber-950">
+                      ⚠️ Esta empresa ya está registrada en el sistema
+                    </p>
+                    <p className="mt-1 text-amber-800 leading-relaxed">
+                      Se ha detectado una coincidencia con <strong>"{duplicateEmpresa.nombre}"</strong>
+                      {duplicateEmpresa.nit ? ` (CIF/NIT: ${duplicateEmpresa.nit})` : ''} 
+                      {duplicateEmpresa.ciudad ? ` en ${duplicateEmpresa.ciudad}` : ''} • Estado: {duplicateEmpresa.estado}.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddCompanyModal(false);
+                        setAddCompanyError(null);
+                        handleOpenEmpresa(duplicateEmpresa.id!);
+                      }}
+                      className="mt-2 inline-flex items-center gap-1 font-bold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
+                    >
+                      Abrir ficha de la empresa existente →
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {addCompanyError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                  <span>{addCompanyError}</span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase">Nombre del Proveedor *</label>
                 <input 
                   type="text" required
                   value={newCompany.nombre}
-                  onChange={(e) => setNewCompany({...newCompany, nombre: e.target.value})}
+                  onChange={(e) => {
+                    setAddCompanyError(null);
+                    setNewCompany({...newCompany, nombre: e.target.value});
+                  }}
                   className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
                 />
               </div>
@@ -2221,8 +2395,17 @@ export default function App() {
                 <button type="button" onClick={() => setShowAddCompanyModal(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer">
                   Cancelar
                 </button>
-                <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg cursor-pointer">
-                  Crear Proveedor
+                <button 
+                  type="submit" 
+                  disabled={!!duplicateEmpresa}
+                  title={duplicateEmpresa ? 'Ya existe una empresa registrada con este nombre o CIF' : undefined}
+                  className={`px-4 py-2 text-white text-xs font-bold rounded-lg transition-all ${
+                    duplicateEmpresa 
+                      ? 'bg-slate-300 cursor-not-allowed opacity-75' 
+                      : 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer shadow-xs'
+                  }`}
+                >
+                  {duplicateEmpresa ? 'Empresa ya existente' : 'Crear Proveedor'}
                 </button>
               </div>
             </form>
@@ -2240,13 +2423,64 @@ export default function App() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <form onSubmit={handleAddContactSubmit} className="p-6 space-y-4">
+            <form onSubmit={handleAddContactSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+              {/* Duplicate Contact Alert */}
+              {duplicateContacto && (
+                <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2.5 shadow-2xs">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-bold text-amber-950">⚠️ Este contacto ya está registrado</p>
+                    <p className="mt-1 text-amber-800 leading-relaxed">
+                      Se ha detectado una coincidencia con <strong>"{duplicateContacto.nombre}"</strong>
+                      {duplicateContacto.cargo ? ` (${duplicateContacto.cargo})` : ''} 
+                      {empresas.find(e => e.id === duplicateContacto.empresaId)?.nombre ? ` en "${empresas.find(e => e.id === duplicateContacto.empresaId)?.nombre}"` : ''}
+                      {duplicateContacto.email ? ` • Email: ${duplicateContacto.email}` : ''}
+                      {duplicateContacto.telefono ? ` • Tel: ${duplicateContacto.telefono}` : ''}.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowAddContactModal(false);
+                        setAddContactError(null);
+                        handleOpenContacto(duplicateContacto.id!);
+                      }}
+                      className="mt-2 inline-flex items-center gap-1 font-bold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
+                    >
+                      Abrir ficha del contacto existente →
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Cross-company same name notice */}
+              {duplicateContactInOtherCompany && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 flex items-start gap-2 shadow-2xs">
+                  <AlertCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-bold text-blue-950">ℹ️ Coincidencia de nombre en otra empresa</p>
+                    <p className="mt-0.5 text-blue-800 leading-relaxed">
+                      Ya existe un contacto llamado <strong>"{duplicateContactInOtherCompany.nombre}"</strong> en "{empresas.find(e => e.id === duplicateContactInOtherCompany.empresaId)?.nombre || 'otra empresa'}". Si se trata de la misma persona, puedes asociarle múltiples empresas desde su ficha.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {addContactError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                  <span>{addContactError}</span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase">Nombre Completo *</label>
                 <input 
                   type="text" required
                   value={newContacto.nombre}
-                  onChange={(e) => setNewContacto({...newContacto, nombre: e.target.value})}
+                  onChange={(e) => {
+                    setAddContactError(null);
+                    setNewContacto({...newContacto, nombre: e.target.value});
+                  }}
                   className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none"
                 />
               </div>
@@ -2256,7 +2490,10 @@ export default function App() {
                   required
                   placeholder="Escribe para buscar empresa..."
                   value={newContacto.empresaId || ''}
-                  onChange={(val) => setNewContacto({...newContacto, empresaId: val})}
+                  onChange={(val) => {
+                    setAddContactError(null);
+                    setNewContacto({...newContacto, empresaId: val});
+                  }}
                   options={empresas.map(e => ({ value: e.id!, label: e.nombre, sublabel: e.tipo }))}
                 />
               </div>
@@ -2267,6 +2504,7 @@ export default function App() {
                   value={newContacto.cargo}
                   onChange={(e) => setNewContacto({...newContacto, cargo: e.target.value})}
                   className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm"
+                  placeholder="Ej. Director de Compras, Comercial..."
                 />
               </div>
               <div>
@@ -2288,7 +2526,10 @@ export default function App() {
                   <input 
                     type="text" 
                     value={newContacto.telefono}
-                    onChange={(e) => setNewContacto({...newContacto, telefono: e.target.value})}
+                    onChange={(e) => {
+                      setAddContactError(null);
+                      setNewContacto({...newContacto, telefono: e.target.value});
+                    }}
                     className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm"
                   />
                 </div>
@@ -2297,17 +2538,88 @@ export default function App() {
                   <input 
                     type="email" 
                     value={newContacto.email}
-                    onChange={(e) => setNewContacto({...newContacto, email: e.target.value})}
+                    onChange={(e) => {
+                      setAddContactError(null);
+                      setNewContacto({...newContacto, email: e.target.value});
+                    }}
                     className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm"
                   />
                 </div>
               </div>
+
+              {/* Estado del contacto & Motivo de inactividad */}
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold text-slate-500 uppercase">Estado inicial</label>
+                  <div className="flex gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                    <button
+                      type="button"
+                      onClick={() => setNewContacto({ ...newContacto, estado: 'activo', motivoInactivo: '' })}
+                      className={`px-2.5 py-1 text-xs font-bold rounded transition-all cursor-pointer ${
+                        newContacto.estado !== 'inactivo' ? 'bg-white text-emerald-700 shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Activo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewContacto({ ...newContacto, estado: 'inactivo' })}
+                      className={`px-2.5 py-1 text-xs font-bold rounded transition-all cursor-pointer ${
+                        newContacto.estado === 'inactivo' ? 'bg-slate-800 text-white shadow-2xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Inactivo
+                    </button>
+                  </div>
+                </div>
+
+                {newContacto.estado === 'inactivo' && (
+                  <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-2">
+                    <label className="block text-[11px] font-bold text-slate-700 uppercase">
+                      Motivo de inactividad (opcional)
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {['Jubilación', 'Cambio de empresa', 'Despido', 'Baja voluntaria', 'Excedencia', 'Fin de contrato'].map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          onClick={() => setNewContacto({ ...newContacto, motivoInactivo: m })}
+                          className={`px-2 py-0.5 text-xs rounded-full border transition-all cursor-pointer ${
+                            newContacto.motivoInactivo === m 
+                              ? 'bg-indigo-600 text-white border-indigo-600 font-bold' 
+                              : 'bg-white text-slate-600 border-slate-200 hover:bg-indigo-50'
+                          }`}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="text"
+                      value={newContacto.motivoInactivo || ''}
+                      onChange={(e) => setNewContacto({ ...newContacto, motivoInactivo: e.target.value })}
+                      placeholder="O escribe un motivo personalizado..."
+                      className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs outline-none focus:border-indigo-500 font-medium"
+                    />
+                  </div>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
                 <button type="button" onClick={() => setShowAddContactModal(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer">
                   Cancelar
                 </button>
-                <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg cursor-pointer">
-                  Guardar Contacto
+                <button 
+                  type="submit" 
+                  disabled={!!duplicateContacto}
+                  title={duplicateContacto ? 'Ya existe un contacto con estos datos' : undefined}
+                  className={`px-4 py-2 text-white text-xs font-bold rounded-lg transition-all ${
+                    duplicateContacto 
+                      ? 'bg-slate-300 cursor-not-allowed opacity-75' 
+                      : 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer shadow-xs'
+                  }`}
+                >
+                  {duplicateContacto ? 'Contacto ya existente' : 'Guardar Contacto'}
                 </button>
               </div>
             </form>

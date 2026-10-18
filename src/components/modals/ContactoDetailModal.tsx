@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { 
-  X, Trash2, Phone, Mail, ExternalLink, Sparkles, AlertCircle, Plus, Tag 
+  X, Trash2, Phone, Mail, ExternalLink, Sparkles, AlertCircle, Plus, Tag,
+  Briefcase, UserCheck, UserX 
 } from 'lucide-react';
 import md5 from 'blueimp-md5';
 import { Contacto, Empresa, Interaccion } from '../../types';
@@ -50,6 +51,15 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [aiError, setAiError] = useState('');
 
+  // Local state for text fields (avoids Firebase call on every keystroke)
+  const [localCargo, setLocalCargo] = useState(selectedContacto?.cargo || '');
+  const [localTelefono, setLocalTelefono] = useState(selectedContacto?.telefono || '');
+  const [localEmail, setLocalEmail] = useState(selectedContacto?.email || '');
+  const [localLinkedin, setLocalLinkedin] = useState(selectedContacto?.linkedin || '');
+  const [localFoto, setLocalFoto] = useState(selectedContacto?.foto || '');
+  const [localNotas, setLocalNotas] = useState(selectedContacto?.notas || '');
+  const [localMotivoInactivo, setLocalMotivoInactivo] = useState(selectedContacto?.motivoInactivo || '');
+
   // Inline interaction creation
   const [showAddInterFormCont, setShowAddInterFormCont] = useState(false);
   const [newInterFormCont, setNewInterFormCont] = useState({
@@ -70,12 +80,20 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
   const [newInteresesInput, setNewInteresesInput] = useState('');
   const [showInteresesSuggestions, setShowInteresesSuggestions] = useState(false);
 
+  // Sync local state when contact changes
   useEffect(() => {
     setGravatarFailed(false);
     setAiResponse(null);
     setAiError('');
     setShowAddInterFormCont(false);
-  }, [selectedContacto?.id, selectedContacto?.email]);
+    setLocalCargo(selectedContacto?.cargo || '');
+    setLocalTelefono(selectedContacto?.telefono || '');
+    setLocalEmail(selectedContacto?.email || '');
+    setLocalLinkedin(selectedContacto?.linkedin || '');
+    setLocalFoto(selectedContacto?.foto || '');
+    setLocalNotas(selectedContacto?.notas || '');
+    setLocalMotivoInactivo(selectedContacto?.motivoInactivo || '');
+  }, [selectedContacto?.id]);
 
   const gravatarUrl = useMemo(() => {
     if (!selectedContacto?.email || !selectedContacto.email.trim()) return null;
@@ -88,6 +106,16 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
     const updated = { ...selectedContacto, [field]: value };
     await onUpdateContacto(updated);
   };
+
+  // Save a text field on blur (called when user leaves the input)
+  const handleBlurSave = useCallback((field: string, value: string) => {
+    if (!selectedContacto) return;
+    // Only save if value actually changed
+    if ((selectedContacto as any)[field] !== value) {
+      handleInlineSave(field, value);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedContacto]);
 
   const existingEmpresaConocidoTags = useMemo(() => {
     const tagsSet = new Set<string>();
@@ -244,8 +272,23 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
               </div>
             )}
             <div>
-              <h2 className="text-2xl font-bold text-slate-50">{selectedContacto.nombre}</h2>
-              <p className="text-sm text-indigo-200 font-medium mt-0.5">{selectedContacto.cargo || 'Sin cargo'}</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-2xl font-bold text-slate-50">{selectedContacto.nombre}</h2>
+                {selectedContacto.estado === 'inactivo' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-400/20 text-amber-200 border border-amber-300/30">
+                    <UserX className="w-3.5 h-3.5" />
+                    Inactivo {selectedContacto.motivoInactivo ? `• ${selectedContacto.motivoInactivo}` : ''}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-400/20 text-emerald-200 border border-emerald-300/30">
+                    <UserCheck className="w-3 h-3" /> Activo
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-indigo-200 font-medium mt-0.5 flex items-center gap-1.5">
+                <Briefcase className="w-3.5 h-3.5 opacity-80" />
+                {selectedContacto.cargo || 'Sin cargo definido'}
+              </p>
             </div>
           </div>
           <button
@@ -310,15 +353,148 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
             </div>
           )}
 
+          {/* Estado del Contacto & Motivo de Inactividad */}
+          <div className={`p-4 rounded-xl border transition-all duration-200 ${
+            selectedContacto.estado === 'inactivo' 
+              ? 'bg-amber-50/50 border-amber-200' 
+              : 'bg-slate-50/80 border-slate-200'
+          }`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <span className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  {selectedContacto.estado === 'inactivo' ? (
+                    <UserX className="w-4 h-4 text-amber-600" />
+                  ) : (
+                    <UserCheck className="w-4 h-4 text-emerald-600" />
+                  )}
+                  Estado del Contacto
+                </span>
+                <span className="text-[11px] text-slate-500 mt-0.5 block">
+                  {selectedContacto.estado === 'inactivo'
+                    ? 'Contacto marcado como inactivo (no disponible para gestiones operativas).'
+                    : 'Contacto activo y disponible para interacciones comerciales.'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleInlineSave('estado', 'activo');
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    selectedContacto.estado !== 'inactivo'
+                      ? 'bg-emerald-600 text-white shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${selectedContacto.estado !== 'inactivo' ? 'bg-white' : 'bg-slate-300'}`}></span>
+                  Activo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleInlineSave('estado', 'inactivo');
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    selectedContacto.estado === 'inactivo'
+                      ? 'bg-slate-800 text-white shadow-2xs'
+                      : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full ${selectedContacto.estado === 'inactivo' ? 'bg-amber-400' : 'bg-slate-300'}`}></span>
+                  Inactivo
+                </button>
+              </div>
+            </div>
+
+            {selectedContacto.estado === 'inactivo' && (
+              <div className="mt-3 pt-3 border-t border-amber-200/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-700 uppercase flex items-center gap-1.5">
+                    <span>Motivo de Inactividad</span>
+                    <span className="text-[10px] text-slate-400 font-normal lowercase">(opcional)</span>
+                  </label>
+                  {selectedContacto.motivoInactivo && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setLocalMotivoInactivo('');
+                        handleInlineSave('motivoInactivo', '');
+                      }}
+                      className="text-[11px] text-slate-400 hover:text-rose-600 font-medium transition-colors cursor-pointer"
+                    >
+                      ✕ Borrar motivo
+                    </button>
+                  )}
+                </div>
+
+                {/* Quick Suggestion Pills */}
+                <div className="flex flex-wrap gap-1.5">
+                  {['Jubilación', 'Cambio de empresa', 'Despido', 'Baja voluntaria', 'Excedencia', 'Fin de contrato'].map((motivo) => {
+                    const isSelected = (selectedContacto.motivoInactivo || '').toLowerCase().trim() === motivo.toLowerCase().trim();
+                    return (
+                      <button
+                        key={motivo}
+                        type="button"
+                        onClick={() => {
+                          setLocalMotivoInactivo(motivo);
+                          handleInlineSave('motivoInactivo', motivo);
+                        }}
+                        className={`px-2.5 py-1 text-xs rounded-full border transition-all cursor-pointer font-semibold ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50'
+                        }`}
+                      >
+                        {motivo}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Custom Motive Input */}
+                <input
+                  type="text"
+                  value={localMotivoInactivo}
+                  onChange={(e) => setLocalMotivoInactivo(e.target.value)}
+                  onBlur={() => handleBlurSave('motivoInactivo', localMotivoInactivo)}
+                  placeholder="O escribe un motivo personalizado (ej. jubilación, cambio de empresa, despido...)"
+                  className="w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-xs text-slate-800 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder:text-slate-400 font-medium"
+                />
+              </div>
+            )}
+          </div>
+
           {/* Profile details grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Cargo / Puesto editable */}
+            <div className="md:col-span-2">
+              <label className="block text-xs font-bold text-slate-600 uppercase flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <Briefcase className="w-3.5 h-3.5 text-indigo-500" />
+                  Cargo / Rol / Puesto de Trabajo
+                </span>
+                <span className="text-[10px] text-slate-400 font-medium">Se guarda automáticamente</span>
+              </label>
+              <input
+                type="text"
+                value={localCargo}
+                onChange={(e) => setLocalCargo(e.target.value)}
+                onBlur={() => handleBlurSave('cargo', localCargo)}
+                onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                placeholder="Ej. Director de Compras, Responsable Comercial, Gerente de Planta..."
+                className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-semibold text-slate-800"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase">Teléfono móvil</label>
               <div className="mt-1 flex gap-1">
                 <input
                   type="text"
-                  value={selectedContacto.telefono || ''}
-                  onChange={(e) => handleInlineSave('telefono', e.target.value)}
+                  value={localTelefono}
+                  onChange={(e) => setLocalTelefono(e.target.value)}
+                  onBlur={() => handleBlurSave('telefono', localTelefono)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
                 />
                 {selectedContacto.telefono && (
@@ -362,8 +538,9 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
               <div className="mt-1 flex gap-1">
                 <input
                   type="email"
-                  value={selectedContacto.email || ''}
-                  onChange={(e) => handleInlineSave('email', e.target.value)}
+                  value={localEmail}
+                  onChange={(e) => setLocalEmail(e.target.value)}
+                  onBlur={() => handleBlurSave('email', localEmail)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
                 />
                 {selectedContacto.email && selectedContacto.email.trim() && (
@@ -383,8 +560,9 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
               <div className="mt-1 flex gap-1">
                 <input
                   type="text"
-                  value={selectedContacto.linkedin || ''}
-                  onChange={(e) => handleInlineSave('linkedin', e.target.value)}
+                  value={localLinkedin}
+                  onChange={(e) => setLocalLinkedin(e.target.value)}
+                  onBlur={() => handleBlurSave('linkedin', localLinkedin)}
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
                 />
                 {selectedContacto.linkedin && (
@@ -412,8 +590,9 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
                 <div className="flex gap-2">
                   <input
                     type="text"
-                    value={selectedContacto.foto || ''}
-                    onChange={(e) => handleInlineSave('foto', e.target.value)}
+                    value={localFoto}
+                    onChange={(e) => setLocalFoto(e.target.value)}
+                    onBlur={() => handleBlurSave('foto', localFoto)}
                     placeholder="Pega un enlace de foto de LinkedIn o de cualquier web..."
                     className="w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none transition-all"
                   />
@@ -479,8 +658,9 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
             <div className="md:col-span-2">
               <label className="block text-xs font-bold text-slate-500 uppercase">Notas del contacto</label>
               <textarea
-                value={selectedContacto.notas || ''}
-                onChange={(e) => handleInlineSave('notas', e.target.value)}
+                value={localNotas}
+                onChange={(e) => setLocalNotas(e.target.value)}
+                onBlur={() => handleBlurSave('notas', localNotas)}
                 rows={3}
                 className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all resize-none font-medium text-slate-700"
                 placeholder="Escribe comentarios o notas sobre este contacto..."

@@ -112,6 +112,11 @@ export const JerarquiaNodo: React.FC<JerarquiaNodoProps> = ({
                   Coincidencia
                 </span>
               )}
+              {contacto.estado === 'inactivo' && (
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                  Inactivo {contacto.motivoInactivo ? `(${contacto.motivoInactivo})` : ''}
+                </span>
+              )}
             </div>
 
             <p className="text-[11px] font-semibold text-slate-500 truncate mt-0.5">

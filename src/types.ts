@@ -106,6 +106,7 @@ export interface Contacto {
   notas: string;
   fecha_creacion: string;
   estado: 'activo' | 'inactivo';
+  motivoInactivo?: string;
 }
 
 export type InteraccionTipo = 'reunion' | 'llamada' | 'email' | 'feria';

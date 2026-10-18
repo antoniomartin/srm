@@ -67,9 +67,8 @@ export const ContactCard: React.FC<ContactCardProps> = ({
   return (
     <div
       onClick={onClick}
-      className={`group bg-white rounded-2xl border border-slate-200/90 p-5 hover:shadow-lg hover:border-indigo-300 transition-all duration-200 cursor-pointer flex flex-col justify-between ${
-        isInactive ? 'opacity-70 bg-slate-50/60' : ''
-      }`}
+      className={`group bg-white rounded-2xl border border-slate-200/90 p-5 hover:shadow-lg hover:border-indigo-300 transition-all duration-200 cursor-pointer flex flex-col justify-between ${isInactive ? 'opacity-70 bg-slate-50/60' : ''
+        }`}
     >
       <div>
         {/* Top Header: Avatar, Name & Status Pill */}
@@ -79,9 +78,8 @@ export const ContactCard: React.FC<ContactCardProps> = ({
               <img
                 src={contacto.foto}
                 alt={contacto.nombre}
-                className={`w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-2xs ${
-                  isInactive ? 'grayscale' : ''
-                }`}
+                className={`w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-2xs ${isInactive ? 'grayscale' : ''
+                  }`}
                 onError={(e) => {
                   (e.target as HTMLImageElement).style.display = 'none';
                 }}
@@ -90,9 +88,8 @@ export const ContactCard: React.FC<ContactCardProps> = ({
               <img
                 src={gravatarUrl}
                 alt={contacto.nombre}
-                className={`w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-2xs ${
-                  isInactive ? 'grayscale' : ''
-                }`}
+                className={`w-11 h-11 rounded-2xl object-cover border border-slate-200 shadow-2xs ${isInactive ? 'grayscale' : ''
+                  }`}
                 onError={() => {
                   setGravatarFailed(true);
                 }}
@@ -107,9 +104,8 @@ export const ContactCard: React.FC<ContactCardProps> = ({
 
             <div className="min-w-0">
               <h3
-                className={`font-extrabold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors truncate ${
-                  isInactive ? 'line-through text-slate-400' : ''
-                }`}
+                className={`font-extrabold text-slate-900 text-sm group-hover:text-indigo-600 transition-colors truncate ${isInactive ? 'line-through text-slate-400' : ''
+                  }`}
               >
                 {contacto.nombre}
               </h3>
