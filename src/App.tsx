@@ -37,7 +37,7 @@ import { TagManager } from './components/TagManager';
 import { Logo } from './components/Logo';
 
 // Utilities
-import { exportToExcel, parseExcelFile } from './utils/excel';
+import { exportToExcel, parseExcelFile, downloadExcelTemplate } from './utils/excel';
 import { generateCompanyReportPDF } from './utils/pdf';
 
 export default function App() {
@@ -186,6 +186,18 @@ export default function App() {
   const [showAlertsModal, setShowAlertsModal] = useState(false);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [pinningEmpresa, setPinningEmpresa] = useState<Empresa | null>(null);
+
+  // Import / Export State
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number; message: string } | null>(null);
+  const [importResultModal, setImportResultModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    details?: string[];
+    isSuccess?: boolean;
+  } | null>(null);
+  const [exportNotice, setExportNotice] = useState<{ message: string; isError?: boolean } | null>(null);
 
   // 1. Auth Listener & test connection
   useEffect(() => {
@@ -653,35 +665,300 @@ export default function App() {
     });
   };
 
-  // Excel Upload
+  // Export & Import Helpers
+  const handleExportExcel = () => {
+    try {
+      const res = exportToExcel(empresas, contactos, interacciones, relaciones);
+      setExportNotice({
+        message: `✅ Archivo descargado: ${res.counts.empresas} proveedores, ${res.counts.contactos} contactos, ${res.counts.interacciones} interacciones y ${res.counts.relaciones} relaciones.`
+      });
+      setTimeout(() => setExportNotice(null), 5000);
+    } catch (err: any) {
+      console.error('Error al exportar a Excel:', err);
+      setExportNotice({
+        message: `❌ Error al exportar: ${err.message || 'No se pudo generar el archivo Excel'}`,
+        isError: true
+      });
+      setTimeout(() => setExportNotice(null), 6000);
+    }
+  };
+
   const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = ''; // Reset input to allow selecting the same file again
     if (!file) return;
+
+    setIsImporting(true);
+    setImportProgress({ current: 0, total: 100, message: 'Analizando archivo Excel...' });
+
     try {
-      const data = await parseExcelFile(file);
-      // Optimistic uploads
-      for (const emp of data.empresas) {
-        await saveDocument('empresas', {
-          nombre: emp.Nombre,
-          tipo: emp.Tipo || 'fabricante',
-          estado: emp.Estado || 'prospecto',
-          nit: emp.NIT || '',
-          direccion: emp.Direccion || '',
-          cp: emp.CP || '',
-          ciudad: emp.Ciudad || '',
-          provincia: emp.Provincia || '',
-          pais: emp.Pais || 'España',
-          telefono: emp.Telefono || '',
-          email: emp.Email || '',
-          web: emp.Web || '',
-          grupo: emp.Grupo || '',
-          tags: emp.Tags ? String(emp.Tags).split(',').map((t: string) => t.trim()) : [],
-          esTambien: emp.RolesAdicionales ? String(emp.RolesAdicionales).split(',').map((t: string) => t.trim()) : []
+      const parsed = await parseExcelFile(file);
+      const totalToProcess = parsed.empresas.length + parsed.contactos.length + parsed.interacciones.length + parsed.relaciones.length;
+
+      if (totalToProcess === 0) {
+        setImportResultModal({
+          isOpen: true,
+          title: 'Sin datos reconocibles',
+          message: 'El archivo Excel no contiene filas con datos o las hojas de cálculo no pudieron ser interpretadas.',
+          details: [
+            `Hojas encontradas en el archivo: ${parsed.sheetNamesFound.join(', ') || 'Ninguna'}`,
+            'Asegúrese de incluir al menos una columna con el nombre de la empresa o proveedor.',
+            'Puede descargar la plantilla de importación con el formato estándar.'
+          ],
+          isSuccess: false
         });
+        setIsImporting(false);
+        setImportProgress(null);
+        return;
       }
-      alert("✅ Importación de empresas completada exitosamente!");
-    } catch (err) {
-      alert("❌ Error al importar Excel.");
+
+      let empresasCreadas = 0;
+      let empresasActualizadas = 0;
+      let contactosCreados = 0;
+      let contactosActualizados = 0;
+      let interaccionesCreadas = 0;
+      let relacionesCreadas = 0;
+
+      // Fast lookup map for matching companies to IDs
+      const nameToIdMap = new Map<string, string>();
+      empresas.forEach(emp => {
+        if (emp.nombre && emp.id) {
+          nameToIdMap.set(emp.nombre.trim().toLowerCase(), emp.id);
+        }
+      });
+
+      // 1. Process Empresas
+      let step = 0;
+      for (const empRow of parsed.empresas) {
+        step++;
+        setImportProgress({
+          current: step,
+          total: totalToProcess,
+          message: `Importando proveedor (${step}/${parsed.empresas.length}): ${empRow.nombre}`
+        });
+
+        const cleanNombre = empRow.nombre.trim();
+        const cleanNit = (empRow.nit || '').trim();
+
+        // Check for duplicate by NIT or trimmed lower-case name
+        const existing = empresas.find(e => {
+          if (cleanNit && cleanNit.length >= 3 && e.nit && e.nit.trim().toLowerCase() === cleanNit.toLowerCase()) {
+            return true;
+          }
+          return e.nombre.trim().toLowerCase() === cleanNombre.toLowerCase();
+        });
+
+        if (existing && existing.id) {
+          // Merge non-empty data without overwriting good values with blanks
+          const updatedData: Partial<Empresa> = {
+            tipo: empRow.tipo || existing.tipo,
+            estado: empRow.estado || existing.estado,
+            nit: cleanNit || existing.nit || '',
+            direccion: empRow.direccion || existing.direccion || '',
+            cp: empRow.cp || existing.cp || '',
+            ciudad: empRow.ciudad || existing.ciudad || '',
+            provincia: empRow.provincia || existing.provincia || '',
+            pais: empRow.pais || existing.pais || 'España',
+            telefono: empRow.telefono || existing.telefono || '',
+            email: empRow.email || existing.email || '',
+            web: empRow.web || existing.web || '',
+            grupo: empRow.grupo || existing.grupo || '',
+            notas: empRow.notas ? (existing.notas ? `${existing.notas}\n${empRow.notas}` : empRow.notas) : (existing.notas || ''),
+            tags: [...new Set([...(existing.tags || []), ...(empRow.tags || [])])],
+            esTambien: [...new Set([...(existing.esTambien || []), ...(empRow.esTambien || [])])],
+            unspscCodes: empRow.unspscCodes?.length ? empRow.unspscCodes : existing.unspscCodes,
+            evaluacion: empRow.evaluacion || existing.evaluacion,
+          };
+
+          await saveDocument('empresas', updatedData, existing.id);
+          nameToIdMap.set(cleanNombre.toLowerCase(), existing.id);
+          empresasActualizadas++;
+        } else {
+          // Create new record
+          const newEmpresaData: Omit<Empresa, 'id'> = {
+            nombre: cleanNombre,
+            tipo: empRow.tipo || 'fabricante',
+            estado: empRow.estado || 'prospecto',
+            nit: cleanNit,
+            direccion: empRow.direccion || '',
+            cp: empRow.cp || '',
+            ciudad: empRow.ciudad || '',
+            provincia: empRow.provincia || '',
+            pais: empRow.pais || 'España',
+            telefono: empRow.telefono || '',
+            email: empRow.email || '',
+            web: empRow.web || '',
+            grupo: empRow.grupo || '',
+            notas: empRow.notas || '',
+            tags: empRow.tags || [],
+            esTambien: empRow.esTambien || [],
+            unspscCodes: empRow.unspscCodes || [],
+            evaluacion: empRow.evaluacion,
+            fecha_creacion: empRow.fecha_creacion || new Date().toISOString(),
+          };
+
+          const newId = await saveDocument('empresas', newEmpresaData);
+          if (newId) {
+            nameToIdMap.set(cleanNombre.toLowerCase(), newId);
+            empresasCreadas++;
+          }
+        }
+      }
+
+      // 2. Process Contactos
+      for (const contRow of parsed.contactos) {
+        step++;
+        setImportProgress({
+          current: step,
+          total: totalToProcess,
+          message: `Importando contacto: ${contRow.nombre}`
+        });
+
+        const cleanContNombre = contRow.nombre.trim();
+        let targetEmpresaId = '';
+        if (contRow.empresaNombre) {
+          targetEmpresaId = nameToIdMap.get(contRow.empresaNombre.trim().toLowerCase()) || '';
+          if (!targetEmpresaId) {
+            const foundEmp = empresas.find(e => e.nombre.trim().toLowerCase() === contRow.empresaNombre!.trim().toLowerCase());
+            if (foundEmp?.id) targetEmpresaId = foundEmp.id;
+          }
+        }
+
+        const existingContact = contactos.find(c => {
+          if (contRow.email && contRow.email.trim() && c.email && c.email.trim().toLowerCase() === contRow.email.trim().toLowerCase()) {
+            return true;
+          }
+          return c.nombre.trim().toLowerCase() === cleanContNombre.toLowerCase() && (targetEmpresaId ? c.empresaId === targetEmpresaId : true);
+        });
+
+        if (existingContact && existingContact.id) {
+          const updatedContact: Partial<Contacto> = {
+            cargo: contRow.cargo || existingContact.cargo || '',
+            telefono: contRow.telefono || existingContact.telefono || '',
+            email: contRow.email || existingContact.email || '',
+            linkedin: contRow.linkedin || existingContact.linkedin || '',
+            notas: contRow.notas ? (existingContact.notas ? `${existingContact.notas}\n${contRow.notas}` : contRow.notas) : (existingContact.notas || ''),
+            empresaId: targetEmpresaId || existingContact.empresaId,
+            intereses: [...new Set([...(existingContact.intereses || []), ...(contRow.intereses || [])])],
+            empresasAnteriores: [...new Set([...(existingContact.empresasAnteriores || []), ...(contRow.empresasAnteriores || [])])],
+            empresaConocido: [...new Set([...(existingContact.empresaConocido || []), ...(contRow.dondeSeConocio || [])])],
+          };
+          await saveDocument('contactos', updatedContact, existingContact.id);
+          contactosActualizados++;
+        } else {
+          const newContact: Omit<Contacto, 'id'> = {
+            nombre: cleanContNombre,
+            empresaId: targetEmpresaId,
+            cargo: contRow.cargo || '',
+            reportaA: null,
+            telefono: contRow.telefono || '',
+            email: contRow.email || '',
+            linkedin: contRow.linkedin || '',
+            estado: contRow.estado || 'activo',
+            motivoInactivo: contRow.motivoInactivo || '',
+            intereses: contRow.intereses || [],
+            empresasAnteriores: contRow.empresasAnteriores || [],
+            empresaConocido: contRow.dondeSeConocio || [],
+            notas: contRow.notas || '',
+            fecha_creacion: new Date().toISOString(),
+          };
+          await saveDocument('contactos', newContact);
+          contactosCreados++;
+        }
+      }
+
+      // 3. Process Interacciones
+      for (const interRow of parsed.interacciones) {
+        step++;
+        setImportProgress({
+          current: step,
+          total: totalToProcess,
+          message: `Importando interacción: ${interRow.asunto}`
+        });
+
+        const matchedEmpresaIds = interRow.empresasNombres
+          .map(name => nameToIdMap.get(name.trim().toLowerCase()))
+          .filter(Boolean) as string[];
+
+        const matchedContactoIds = interRow.contactosNombres
+          .map(name => contactos.find(c => c.nombre.trim().toLowerCase() === name.trim().toLowerCase())?.id)
+          .filter(Boolean) as string[];
+
+        const newInteraccion: Omit<Interaccion, 'id'> = {
+          asunto: interRow.asunto,
+          tipo: interRow.tipo,
+          fecha: interRow.fecha,
+          fechaLimite: interRow.fechaLimite || null,
+          estado: interRow.estado,
+          contactoId: matchedContactoIds[0] || '',
+          contactoIds: matchedContactoIds,
+          empresaIds: matchedEmpresaIds,
+          descripcion: interRow.descripcion,
+          resolucion: interRow.resolucion,
+          pasos: interRow.pasosRaw ? [{ texto: interRow.pasosRaw, fecha: interRow.fecha, completado: interRow.estado === 'completada' }] : [],
+        };
+
+        await saveDocument('interacciones', newInteraccion);
+        interaccionesCreadas++;
+      }
+
+      // 4. Process Relaciones
+      for (const relRow of parsed.relaciones) {
+        step++;
+        setImportProgress({
+          current: step,
+          total: totalToProcess,
+          message: `Importando relación comercial...`
+        });
+
+        const fId = nameToIdMap.get(relRow.fabricanteNombre.trim().toLowerCase());
+        const dId = nameToIdMap.get(relRow.distribuidorNombre.trim().toLowerCase());
+
+        if (fId && dId && fId !== dId) {
+          const existingRel = relaciones.find(r => r.fabricanteId === fId && r.distribuidorId === dId);
+          if (!existingRel) {
+            await saveDocument('relaciones', {
+              fabricanteId: fId,
+              distribuidorId: dId,
+              preferente: relRow.preferente,
+              notas: relRow.notas
+            });
+            relacionesCreadas++;
+          }
+        }
+      }
+
+      setImportResultModal({
+        isOpen: true,
+        title: '¡Importación completada con éxito!',
+        message: `El archivo Excel fue procesado correctamente.`,
+        details: [
+          `• ${empresasCreadas} nuevos proveedores dados de alta`,
+          ...(empresasActualizadas > 0 ? [`• ${empresasActualizadas} proveedores existentes actualizados`] : []),
+          ...(contactosCreados > 0 ? [`• ${contactosCreados} contactos añadidos`] : []),
+          ...(contactosActualizados > 0 ? [`• ${contactosActualizados} contactos actualizados`] : []),
+          ...(interaccionesCreadas > 0 ? [`• ${interaccionesCreadas} interacciones registradas`] : []),
+          ...(relacionesCreadas > 0 ? [`• ${relacionesCreadas} relaciones fabricante-distribuidor registradas`] : []),
+        ],
+        isSuccess: true,
+      });
+
+    } catch (err: any) {
+      console.error('Error durante la importación:', err);
+      setImportResultModal({
+        isOpen: true,
+        title: 'Error al importar archivo',
+        message: err.message || 'Ocurrió un error inesperado al procesar el archivo Excel.',
+        details: [
+          'Verifique que el archivo no esté protegido con contraseña.',
+          'Formatos admitidos: .xlsx, .xls, .csv.',
+          'Descargue la plantilla de importación para comprobar los nombres de columnas recomendados.'
+        ],
+        isSuccess: false,
+      });
+    } finally {
+      setIsImporting(false);
+      setImportProgress(null);
     }
   };
 
@@ -938,6 +1215,29 @@ export default function App() {
               </div>
 
               <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                {currentTab === 'empresas' && (
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleExportExcel}
+                      title="Exportar proveedores a Excel"
+                      className="px-2.5 py-2 bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border border-slate-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline">Exportar</span>
+                    </button>
+                    <label
+                      title="Importar proveedores desde Excel"
+                      className={`px-2.5 py-2 bg-slate-50 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 border border-slate-200 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                        isImporting ? 'opacity-50 pointer-events-none' : ''
+                      }`}
+                    >
+                      {isImporting ? <RefreshCw className="w-3.5 h-3.5 text-indigo-500 animate-spin" /> : <Upload className="w-3.5 h-3.5 text-indigo-500" />}
+                      <span className="hidden md:inline">{isImporting ? 'Importando...' : 'Importar'}</span>
+                      <input type="file" accept=".xlsx, .xls, .csv" onChange={handleImportExcel} disabled={isImporting} className="hidden" />
+                    </label>
+                  </div>
+                )}
                 {currentTab === 'empresas' && (
                   <div className="relative min-w-[200px] max-w-[260px]" ref={mainUnspscDropdownRef}>
                     <div className="relative">
@@ -1516,15 +1816,15 @@ export default function App() {
                 {/* Import/Export Card */}
                 <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
                   <h4 className="font-bold text-slate-800 text-sm">Respaldo y Archivos</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
                     <div className="p-4 border border-slate-100 bg-slate-50/50 rounded-lg flex flex-col justify-between">
                       <div>
                         <h5 className="font-semibold text-slate-700 text-xs">EXPORTAR DATOS</h5>
-                        <p className="text-slate-500 text-[11px] mt-1">Descarga el SRM de forma completa en una plantilla estructurada de Excel.</p>
+                        <p className="text-slate-500 text-[11px] mt-1">Descarga el SRM de forma completa en un archivo Excel multi-hoja con proveedores, contactos, interacciones y relaciones.</p>
                       </div>
                       <button 
-                        onClick={() => exportToExcel(empresas, contactos, interacciones, relaciones)}
-                        className="mt-3 inline-flex items-center gap-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-sm transition-colors cursor-pointer w-fit"
+                        onClick={handleExportExcel}
+                        className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg shadow-sm transition-colors cursor-pointer w-fit"
                       >
                         <Download className="w-4 h-4" /> Descargar Excel
                       </button>
@@ -1533,12 +1833,26 @@ export default function App() {
                     <div className="p-4 border border-slate-100 bg-slate-50/50 rounded-lg flex flex-col justify-between">
                       <div>
                         <h5 className="font-semibold text-slate-700 text-xs">IMPORTAR DATOS</h5>
-                        <p className="text-slate-500 text-[11px] mt-1">Carga masivamente registros de proveedores desde una hoja de Excel.</p>
+                        <p className="text-slate-500 text-[11px] mt-1">Carga masivamente proveedores y contactos desde Excel (.xlsx, .xls, .csv). Evita duplicados por CIF o nombre.</p>
                       </div>
-                      <label className="mt-3 inline-flex items-center gap-1 px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-lg shadow-sm transition-colors cursor-pointer w-fit">
-                        <Upload className="w-4 h-4 text-indigo-500" /> Seleccionar Archivo
-                        <input type="file" accept=".xlsx" onChange={handleImportExcel} className="hidden" />
+                      <label className={`mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs rounded-lg shadow-sm transition-colors cursor-pointer w-fit ${isImporting ? 'opacity-50 pointer-events-none' : ''}`}>
+                        {isImporting ? <RefreshCw className="w-4 h-4 text-indigo-500 animate-spin" /> : <Upload className="w-4 h-4 text-indigo-500" />}
+                        <span>{isImporting ? 'Importando...' : 'Seleccionar Archivo'}</span>
+                        <input type="file" accept=".xlsx, .xls, .csv" onChange={handleImportExcel} disabled={isImporting} className="hidden" />
                       </label>
+                    </div>
+
+                    <div className="p-4 border border-slate-100 bg-slate-50/50 rounded-lg flex flex-col justify-between">
+                      <div>
+                        <h5 className="font-semibold text-slate-700 text-xs">PLANTILLA DE EJEMPLO</h5>
+                        <p className="text-slate-500 text-[11px] mt-1">Descarga una plantilla vacía con los encabezados adecuados, datos de ejemplo e instrucciones para rellenar fácilmente.</p>
+                      </div>
+                      <button 
+                        onClick={downloadExcelTemplate}
+                        className="mt-3 inline-flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-lg shadow-sm transition-colors cursor-pointer w-fit"
+                      >
+                        <FileText className="w-4 h-4 text-slate-600" /> Descargar Plantilla
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -2196,6 +2510,80 @@ export default function App() {
             setPinningEmpresa(null);
           }}
         />
+      )}
+
+      {/* Excel Import Progress Overlay */}
+      {isImporting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 max-w-md w-full text-center">
+            <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4 text-indigo-600">
+              <RefreshCw className="w-6 h-6 animate-spin" />
+            </div>
+            <h3 className="font-extrabold text-slate-800 text-base">Importando datos desde Excel...</h3>
+            <p className="text-slate-500 text-xs mt-1">
+              {importProgress?.message || 'Procesando registros, por favor espere...'}
+            </p>
+            {importProgress && importProgress.total > 0 && (
+              <div className="mt-4">
+                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-indigo-600 h-2 transition-all duration-200 rounded-full"
+                    style={{ width: `${Math.min(100, Math.round((importProgress.current / importProgress.total) * 100))}%` }}
+                  />
+                </div>
+                <p className="text-[11px] font-bold text-slate-400 mt-2">
+                  {importProgress.current} de {importProgress.total} registros
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Excel Import Result Modal */}
+      {importResultModal?.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-6 max-w-md w-full">
+            <div className="flex items-center gap-3 mb-3">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${importResultModal.isSuccess ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'}`}>
+                {importResultModal.isSuccess ? <CheckCircle2 className="w-6 h-6" /> : <AlertTriangle className="w-6 h-6" />}
+              </div>
+              <div>
+                <h3 className="font-extrabold text-slate-800 text-base">{importResultModal.title}</h3>
+                <p className="text-slate-500 text-xs">{importResultModal.message}</p>
+              </div>
+            </div>
+
+            {importResultModal.details && importResultModal.details.length > 0 && (
+              <div className="my-4 p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-1.5 text-xs text-slate-600">
+                {importResultModal.details.map((detail, idx) => (
+                  <p key={idx} className="font-medium">{detail}</p>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setImportResultModal(null)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md shadow-indigo-100 transition-all cursor-pointer"
+              >
+                Aceptar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notice for Export */}
+      {exportNotice && (
+        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border text-xs font-bold transition-all animate-in slide-in-from-bottom duration-200 ${
+          exportNotice.isError ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-slate-900 border-slate-800 text-white'
+        }`}>
+          {exportNotice.isError ? <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
+          <span>{exportNotice.message}</span>
+          <button type="button" onClick={() => setExportNotice(null)} className="ml-2 text-slate-400 hover:text-white font-bold">✕</button>
+        </div>
       )}
     </div>
   );
