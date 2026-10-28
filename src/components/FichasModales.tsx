@@ -52,6 +52,11 @@ export interface FichasModalesProps {
   onGeneratePDF: (emp: Empresa) => void;
   scores: { [id: string]: { nivel: string; label: string; dias: number | null } };
 
+  // Company creation
+  isCreatingEmpresa?: boolean;
+  onCreateEmpresa?: (empresa: Omit<Empresa, 'id'>) => Promise<string | undefined>;
+  onOpenCreateEmpresa?: () => void;
+
   // Contact creation
   isCreatingContacto?: boolean;
   onCreateContacto?: (contacto: Omit<Contacto, 'id'>) => Promise<string | undefined>;
@@ -68,6 +73,9 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
   onOpenContacto,
   onOpenInteraccion,
   onOpenEmpresa,
+  isCreatingEmpresa,
+  onCreateEmpresa,
+  onOpenCreateEmpresa,
   isCreatingContacto,
   onCreateContacto,
   onOpenCreateContacto,
@@ -126,6 +134,8 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
     <>
       <EmpresaDetailModal
         selectedEmpresa={selectedEmpresa}
+        isCreating={isCreatingEmpresa}
+        onCreateEmpresa={onCreateEmpresa}
         onClose={onCloseEmpresa}
         empresas={empresas}
         contactos={contactos}

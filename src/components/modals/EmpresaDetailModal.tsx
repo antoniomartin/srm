@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   X, Save, Trash2, Tag, Plus, File, MapPin, Check, Sparkles, AlertCircle, 
-  Search, Phone, Mail, ExternalLink, Calendar, Upload, FileText, Clock, ShieldCheck
+  Search, Phone, Mail, ExternalLink, Calendar, Upload, FileText, Clock, ShieldCheck,
+  Building2
 } from 'lucide-react';
 import { 
-  Empresa, Contacto, Interaccion, Documento, Relacion, EmpresaTipo, 
+  Empresa, Contacto, Interaccion, Documento, Relacion, EmpresaTipo, EmpresaEstado,
   UNSPSC_OPTIONS, UnspscCode 
 } from '../../types';
 import { OrganigramaTree } from './OrganigramaTree';
@@ -188,6 +189,8 @@ const RelacionAutocomplete: React.FC<RelacionAutocompleteProps> = ({
 
 export interface EmpresaDetailModalProps {
   selectedEmpresa: Empresa | null;
+  isCreating?: boolean;
+  onCreateEmpresa?: (emp: Omit<Empresa, 'id'>) => Promise<string | undefined>;
   onClose: () => void;
   empresas: Empresa[];
   contactos: Contacto[];
@@ -223,6 +226,8 @@ export interface EmpresaDetailModalProps {
 
 export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
   selectedEmpresa,
+  isCreating = false,
+  onCreateEmpresa,
   onClose,
   empresas,
   contactos,
@@ -252,6 +257,26 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
   const [aiResponse, setAiResponse] = useState<string | null>(null);
   const [aiError, setAiError] = useState('');
 
+  // Local state for all fields (supports immediate creation & smooth editing)
+  const [localNombre, setLocalNombre] = useState(selectedEmpresa?.nombre || '');
+  const [localTipo, setLocalTipo] = useState<EmpresaTipo>(selectedEmpresa?.tipo || 'fabricante');
+  const [localEsTambien, setLocalEsTambien] = useState<EmpresaTipo[]>(selectedEmpresa?.esTambien || []);
+  const [localEstado, setLocalEstado] = useState<EmpresaEstado>(selectedEmpresa?.estado || 'prospecto');
+  const [estadoSeleccionado, setEstadoSeleccionado] = useState<string>(selectedEmpresa?.estado || 'prospecto');
+  const [localNit, setLocalNit] = useState(selectedEmpresa?.nit || '');
+  const [localGrupo, setLocalGrupo] = useState(selectedEmpresa?.grupo || '');
+  const [localDireccion, setLocalDireccion] = useState(selectedEmpresa?.direccion || '');
+  const [localCp, setLocalCp] = useState(selectedEmpresa?.cp || '');
+  const [localCiudad, setLocalCiudad] = useState(selectedEmpresa?.ciudad || '');
+  const [localProvincia, setLocalProvincia] = useState(selectedEmpresa?.provincia || '');
+  const [localPais, setLocalPais] = useState(selectedEmpresa?.pais || 'España');
+  const [localTelefono, setLocalTelefono] = useState(selectedEmpresa?.telefono || '');
+  const [localEmail, setLocalEmail] = useState(selectedEmpresa?.email || '');
+  const [localWeb, setLocalWeb] = useState(selectedEmpresa?.web || '');
+  const [localNotas, setLocalNotas] = useState(selectedEmpresa?.notas || '');
+  const [localTags, setLocalTags] = useState<string[]>(selectedEmpresa?.tags || []);
+  const [localUnspscCodes, setLocalUnspscCodes] = useState<UnspscCode[]>(selectedEmpresa?.unspscCodes || []);
+
   // Performance evaluation state
   const [evalPlazos, setEvalPlazos] = useState(0);
   const [evalCalidad, setEvalCalidad] = useState(0);
@@ -259,7 +284,6 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
   const [evalComentarios, setEvalComentarios] = useState('');
   const [isSavingEval, setIsSavingEval] = useState(false);
   const [evalSaveSuccess, setEvalSaveSuccess] = useState(false);
-  const [estadoSeleccionado, setEstadoSeleccionado] = useState<string>('prospecto');
 
   // Country suggestions
   const [showCountrySuggestions, setShowCountrySuggestions] = useState(false);
@@ -278,13 +302,17 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
   const [isSearchingUnspsc, setIsSearchingUnspsc] = useState(false);
   const unspscDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Creation feedback
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [isSavingNew, setIsSavingNew] = useState(false);
+
   // Document upload state
   const [showAddDocForm, setShowAddDocForm] = useState(false);
   const [docNombre, setDocNombre] = useState('');
   const [docCaducidad, setDocCaducidad] = useState('');
   const [docUrl, setDocUrl] = useState('');
 
-  // Inline forms
+  // Inline interaction forms
   const [showAddInterFormEmp, setShowAddInterFormEmp] = useState(false);
   const [newInterFormEmp, setNewInterFormEmp] = useState({
     asunto: '',
@@ -295,20 +323,38 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
     estado: 'pendiente' as 'pendiente' | 'completada',
   });
 
+  // Sync state when selectedEmpresa changes or creation mode is entered
   useEffect(() => {
-    if (selectedEmpresa) {
-      setEvalPlazos(selectedEmpresa.evaluacion?.plazos || 0);
-      setEvalCalidad(selectedEmpresa.evaluacion?.calidad || 0);
-      setEvalFlexibilidad(selectedEmpresa.evaluacion?.flexibilidad || 0);
-      setEvalComentarios(selectedEmpresa.evaluacion?.comentarios || '');
-      setEvalSaveSuccess(false);
-      setEstadoSeleccionado(selectedEmpresa.estado || 'prospecto');
-      setAiResponse(null);
-      setAiError('');
-      setShowAddInterFormEmp(false);
-      setShowAddDocForm(false);
-    }
-  }, [selectedEmpresa?.id, selectedEmpresa?.estado]);
+    setCreateError(null);
+    setLocalNombre(selectedEmpresa?.nombre || '');
+    setLocalTipo(selectedEmpresa?.tipo || 'fabricante');
+    setLocalEsTambien(selectedEmpresa?.esTambien || []);
+    setLocalEstado(selectedEmpresa?.estado || 'prospecto');
+    setEstadoSeleccionado(selectedEmpresa?.estado || 'prospecto');
+    setLocalNit(selectedEmpresa?.nit || '');
+    setLocalGrupo(selectedEmpresa?.grupo || '');
+    setLocalDireccion(selectedEmpresa?.direccion || '');
+    setLocalCp(selectedEmpresa?.cp || '');
+    setLocalCiudad(selectedEmpresa?.ciudad || '');
+    setLocalProvincia(selectedEmpresa?.provincia || '');
+    setLocalPais(selectedEmpresa?.pais || 'España');
+    setLocalTelefono(selectedEmpresa?.telefono || '');
+    setLocalEmail(selectedEmpresa?.email || '');
+    setLocalWeb(selectedEmpresa?.web || '');
+    setLocalNotas(selectedEmpresa?.notas || '');
+    setLocalTags(selectedEmpresa?.tags || []);
+    setLocalUnspscCodes(selectedEmpresa?.unspscCodes || []);
+
+    setEvalPlazos(selectedEmpresa?.evaluacion?.plazos || 0);
+    setEvalCalidad(selectedEmpresa?.evaluacion?.calidad || 0);
+    setEvalFlexibilidad(selectedEmpresa?.evaluacion?.flexibilidad || 0);
+    setEvalComentarios(selectedEmpresa?.evaluacion?.comentarios || '');
+    setEvalSaveSuccess(false);
+    setAiResponse(null);
+    setAiError('');
+    setShowAddInterFormEmp(false);
+    setShowAddDocForm(false);
+  }, [selectedEmpresa, isCreating]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -350,6 +396,42 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
     return () => clearTimeout(delayDebounce);
   }, [unspscSearch]);
 
+  // Duplicate supplier detection in creation mode
+  const duplicateEmpresa = useMemo(() => {
+    if (!isCreating) return null;
+    const rawName = (localNombre || '').trim().toLowerCase();
+    const rawNit = (localNit || '').replace(/[\s\-\.]/g, '').toLowerCase();
+
+    if (!rawName && !rawNit) return null;
+
+    const normalizeCompanyName = (str: string) => {
+      return str
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\b(s\.?l\.?u?|s\.?a\.?u?|s\.?c\.?p?|s\.?l\.?l?|s\.?coop|sociedad limitada|sociedad anonima)\b/gi, '')
+        .replace(/[^a-z0-9]/g, '')
+        .trim();
+    };
+
+    const normName = normalizeCompanyName(rawName);
+
+    return empresas.find((e) => {
+      if (selectedEmpresa?.id && e.id === selectedEmpresa.id) return false;
+      // 1. CIF / NIT exact match
+      if (rawNit && e.nit) {
+        const existNit = e.nit.replace(/[\s\-\.]/g, '').toLowerCase();
+        if (existNit && existNit === rawNit) return true;
+      }
+      // 2. Corporate name match (min 3 chars to avoid false positives)
+      if (normName.length >= 3) {
+        const existNorm = normalizeCompanyName(e.nombre || '');
+        if (existNorm && existNorm === normName) return true;
+      }
+      return false;
+    }) || null;
+  }, [isCreating, localNombre, localNit, empresas, selectedEmpresa?.id]);
+
   const allExistingTags = useMemo(() => {
     const tagsSet = new Set<string>();
     empresas.forEach((emp) => {
@@ -372,25 +454,140 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
     );
   }, [unspscSearch, dynamicUnspscOptions]);
 
-  if (!selectedEmpresa) return null;
-
   const handleInlineSave = async (field: string, value: any) => {
+    if (field === 'nombre') setLocalNombre(value);
+    if (field === 'tipo') setLocalTipo(value);
+    if (field === 'esTambien') setLocalEsTambien(value);
+    if (field === 'estado') {
+      setLocalEstado(value);
+      setEstadoSeleccionado(value);
+    }
+    if (field === 'nit') setLocalNit(value);
+    if (field === 'grupo') setLocalGrupo(value);
+    if (field === 'direccion') setLocalDireccion(value);
+    if (field === 'cp') setLocalCp(value);
+    if (field === 'ciudad') setLocalCiudad(value);
+    if (field === 'provincia') setLocalProvincia(value);
+    if (field === 'pais') setLocalPais(value);
+    if (field === 'telefono') setLocalTelefono(value);
+    if (field === 'email') setLocalEmail(value);
+    if (field === 'web') setLocalWeb(value);
+    if (field === 'notas') setLocalNotas(value);
+    if (field === 'tags') setLocalTags(value);
+    if (field === 'unspscCodes') setLocalUnspscCodes(value);
+
+    // If creating a new empresa, we only update local state until Save button is clicked
+    if (isCreating || !selectedEmpresa?.id) return;
+
     const updated = { ...selectedEmpresa, [field]: value };
     await onUpdateEmpresa(updated);
   };
 
+  const handleBlurSave = useCallback((field: string, value: string) => {
+    if (isCreating || !selectedEmpresa?.id) return;
+    if ((selectedEmpresa as any)[field] !== value) {
+      handleInlineSave(field, value);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEmpresa, isCreating]);
+
   const handleAddTag = async (tag: string) => {
-    if (!tag.trim() || selectedEmpresa.tags.includes(tag)) return;
-    const updated = { ...selectedEmpresa, tags: [...selectedEmpresa.tags, tag] };
-    await onUpdateEmpresa(updated);
+    const trimmed = tag.trim();
+    if (!trimmed) return;
+    if (localTags.map((t) => t.toLowerCase()).includes(trimmed.toLowerCase())) return;
+    const updated = [...localTags, trimmed];
+    setLocalTags(updated);
+    if (!isCreating && selectedEmpresa?.id) {
+      await onUpdateEmpresa({ ...selectedEmpresa, tags: updated });
+    }
+    setNewTagInput('');
+    setShowTagSuggestions(false);
   };
 
   const handleRemoveTag = async (tag: string) => {
-    const updated = { ...selectedEmpresa, tags: selectedEmpresa.tags.filter((t) => t !== tag) };
-    await onUpdateEmpresa(updated);
+    const updated = localTags.filter((t) => t !== tag);
+    setLocalTags(updated);
+    if (!isCreating && selectedEmpresa?.id) {
+      await onUpdateEmpresa({ ...selectedEmpresa, tags: updated });
+    }
+  };
+
+  const handleAddUnspsc = async (item: UnspscCode) => {
+    const current = localUnspscCodes || [];
+    if (current.some((u) => u.code === item.code)) return;
+    const updated = [...current, item];
+    setLocalUnspscCodes(updated);
+    if (!isCreating && selectedEmpresa?.id) {
+      await onUpdateEmpresa({ ...selectedEmpresa, unspscCodes: updated });
+    }
+    setUnspscSearch('');
+    setUnspscShowDropdown(false);
+  };
+
+  const handleRemoveUnspsc = async (code: string) => {
+    const updated = (localUnspscCodes || []).filter((u) => u.code !== code);
+    setLocalUnspscCodes(updated);
+    if (!isCreating && selectedEmpresa?.id) {
+      await onUpdateEmpresa({ ...selectedEmpresa, unspscCodes: updated });
+    }
+  };
+
+  const handleSaveNewEmpresa = async () => {
+    if (!localNombre.trim()) {
+      setCreateError('El nombre o razón social del proveedor es obligatorio.');
+      return;
+    }
+    if (duplicateEmpresa) {
+      setCreateError(`Ya existe un proveedor registrado con estos datos: "${duplicateEmpresa.nombre}".`);
+      return;
+    }
+
+    setCreateError(null);
+    setIsSavingNew(true);
+    try {
+      const isEvalFilled = evalPlazos > 0 || evalCalidad > 0 || evalFlexibilidad > 0 || evalComentarios.trim();
+      const newEmpresaData: Omit<Empresa, 'id'> = {
+        nombre: localNombre.trim(),
+        tipo: localTipo,
+        esTambien: localEsTambien,
+        estado: (estadoSeleccionado || localEstado) as EmpresaEstado,
+        nit: localNit.trim(),
+        grupo: localGrupo.trim(),
+        direccion: localDireccion.trim(),
+        cp: localCp.trim(),
+        ciudad: localCiudad.trim(),
+        provincia: localProvincia.trim(),
+        pais: localPais.trim() || 'España',
+        telefono: localTelefono.trim(),
+        email: localEmail.trim(),
+        web: localWeb.trim(),
+        notas: localNotas.trim(),
+        tags: localTags,
+        unspscCodes: localUnspscCodes,
+        evaluacion: isEvalFilled
+          ? {
+              plazos: evalPlazos,
+              calidad: evalCalidad,
+              flexibilidad: evalFlexibilidad,
+              comentarios: evalComentarios.trim(),
+              ultimaActualizacion: new Date().toISOString(),
+            }
+          : undefined,
+        fecha_creacion: new Date().toISOString(),
+      };
+
+      if (onCreateEmpresa) {
+        await onCreateEmpresa(newEmpresaData);
+      }
+    } catch (err: any) {
+      setCreateError(err.message || 'Error al guardar el proveedor.');
+    } finally {
+      setIsSavingNew(false);
+    }
   };
 
   const generateAiInsights = async () => {
+    if (!selectedEmpresa?.id) return;
     setAiLoading(true);
     setAiError('');
     try {
@@ -416,7 +613,7 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           entityType: 'empresa',
-          name: selectedEmpresa.nombre,
+          name: localNombre || selectedEmpresa.nombre,
           details: selectedEmpresa,
           history,
         }),
@@ -451,23 +648,25 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
         </button>
       ))}
       {currentVal > 0 && (
-        <span className="text-xs font-bold text-slate-500 ml-1.5 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 font-mono">
+        <span className="text-xs font-bold text-slate-500 ml-1">
           {currentVal}/5
         </span>
       )}
     </div>
   );
 
+  if (!selectedEmpresa && !isCreating) return null;
+
   const isFabricante =
-    selectedEmpresa.tipo === 'fabricante' || (selectedEmpresa.esTambien || []).includes('fabricante');
+    localTipo === 'fabricante' || localEsTambien.includes('fabricante');
   const isDistribuidor =
-    selectedEmpresa.tipo === 'distribuidor' || (selectedEmpresa.esTambien || []).includes('distribuidor');
+    localTipo === 'distribuidor' || localEsTambien.includes('distribuidor');
 
-  const contactosEmpresa = contactos.filter(
+  const contactosEmpresa = !isCreating && selectedEmpresa?.id ? contactos.filter(
     (c) => c.empresaId === selectedEmpresa.id || c.empresaIds?.includes(selectedEmpresa.id!)
-  );
+  ) : [];
 
-  const docsEmpresa = documentos.filter((d) => d.empresaId === selectedEmpresa.id);
+  const docsEmpresa = !isCreating && selectedEmpresa?.id ? documentos.filter((d) => d.empresaId === selectedEmpresa.id) : [];
 
   return (
     <div
@@ -482,79 +681,98 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
         <div className="p-6 bg-slate-900 text-white flex items-start justify-between">
           <div>
             <div className="flex flex-wrap gap-1 mb-1.5">
-              {[selectedEmpresa.tipo, ...(selectedEmpresa.esTambien || [])]
-                .filter((val, index, self) => val && self.indexOf(val) === index)
-                .map((role) => (
-                  <span
-                    key={role}
-                    className="text-[10px] font-bold text-indigo-200 bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-400/20 uppercase tracking-wider"
-                  >
-                    {role === 'fabricante'
-                      ? '🏭 fabricante'
-                      : role === 'distribuidor'
-                      ? '🚚 distribuidor'
-                      : role === 'servicios'
-                      ? '🛠️ servicios'
-                      : '📦 ' + role}
-                  </span>
-                ))}
-            </div>
-            <h2 className="text-2xl font-bold mt-1 text-slate-50">{selectedEmpresa.nombre}</h2>
-            <div className="flex items-center gap-2 mt-2">
-              <span
-                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide border ${
-                  selectedEmpresa.estado === 'homologado' || selectedEmpresa.estado === 'validado'
-                    ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                    : selectedEmpresa.estado === 'en_proceso'
-                    ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30'
-                    : selectedEmpresa.estado === 'en_cuarentena'
-                    ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                    : selectedEmpresa.estado === 'no_apto'
-                    ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
-                    : selectedEmpresa.estado === 'inactivo'
-                    ? 'bg-slate-500/20 text-slate-400 border-slate-500/30'
-                    : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                }`}
-              >
-                {selectedEmpresa.estado === 'homologado' || selectedEmpresa.estado === 'validado'
-                  ? 'Homologado'
-                  : selectedEmpresa.estado === 'en_proceso'
-                  ? 'En proceso'
-                  : selectedEmpresa.estado === 'en_cuarentena'
-                  ? 'En cuarentena'
-                  : selectedEmpresa.estado === 'no_apto'
-                  ? 'No apto'
-                  : selectedEmpresa.estado === 'inactivo'
-                  ? 'Inactivo'
-                  : 'Prospecto'}
-              </span>
-
-              {selectedEmpresa.evaluacion &&
-                selectedEmpresa.evaluacion.plazos > 0 &&
-                selectedEmpresa.evaluacion.calidad > 0 &&
-                selectedEmpresa.evaluacion.flexibilidad > 0 &&
-                (() => {
-                  const avg =
-                    (selectedEmpresa.evaluacion.plazos +
-                      selectedEmpresa.evaluacion.calidad +
-                      selectedEmpresa.evaluacion.flexibilidad) /
-                    3;
-                  return (
+              {isCreating ? (
+                <span className="text-[10px] font-bold text-indigo-200 bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-400/20 uppercase tracking-wider">
+                  ✨ Alta de Proveedor
+                </span>
+              ) : (
+                [localTipo, ...localEsTambien]
+                  .filter((val, index, self) => val && self.indexOf(val) === index)
+                  .map((role) => (
                     <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
-                        avg >= 4.0
-                          ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                          : avg >= 2.5
-                          ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                          : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
-                      }`}
-                      title={`Última evaluación de desempeño: ${avg.toFixed(1)}/5.0`}
+                      key={role}
+                      className="text-[10px] font-bold text-indigo-200 bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-400/20 uppercase tracking-wider"
                     >
-                      <span>⭐ KPI: {avg.toFixed(1)}/5</span>
+                      {role === 'fabricante'
+                        ? '🏭 fabricante'
+                        : role === 'distribuidor'
+                        ? '🚚 distribuidor'
+                        : role === 'servicios'
+                        ? '🛠️ servicios'
+                        : '📦 ' + role}
                     </span>
-                  );
-                })()}
+                  ))
+              )}
             </div>
+            <h2 className="text-2xl font-bold mt-1 text-slate-50">
+              {isCreating ? (localNombre.trim() || 'Nuevo Proveedor') : (localNombre || selectedEmpresa?.nombre)}
+            </h2>
+            {isCreating ? (
+              <div className="flex items-center gap-2 mt-2">
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                  ✨ Ficha Completa
+                </span>
+                <span className="text-xs text-indigo-200 font-medium">
+                  Rellena todos los campos para dar de alta al proveedor
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 mt-2">
+                <span
+                  className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wide border ${
+                    selectedEmpresa?.estado === 'homologado' || selectedEmpresa?.estado === 'validado'
+                      ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                      : selectedEmpresa?.estado === 'en_proceso'
+                      ? 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30'
+                      : selectedEmpresa?.estado === 'en_cuarentena'
+                      ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                      : selectedEmpresa?.estado === 'no_apto'
+                      ? 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                      : selectedEmpresa?.estado === 'inactivo'
+                      ? 'bg-slate-500/20 text-slate-400 border-slate-500/30'
+                      : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                  }`}
+                >
+                  {selectedEmpresa?.estado === 'homologado' || selectedEmpresa?.estado === 'validado'
+                    ? 'Homologado'
+                    : selectedEmpresa?.estado === 'en_proceso'
+                    ? 'En proceso'
+                    : selectedEmpresa?.estado === 'en_cuarentena'
+                    ? 'En quarantine'
+                    : selectedEmpresa?.estado === 'no_apto'
+                    ? 'No apto'
+                    : selectedEmpresa?.estado === 'inactivo'
+                    ? 'Inactivo'
+                    : 'Prospecto'}
+                </span>
+
+                {selectedEmpresa?.evaluacion &&
+                  selectedEmpresa.evaluacion.plazos > 0 &&
+                  selectedEmpresa.evaluacion.calidad > 0 &&
+                  selectedEmpresa.evaluacion.flexibilidad > 0 &&
+                  (() => {
+                    const avg =
+                      (selectedEmpresa.evaluacion.plazos +
+                        selectedEmpresa.evaluacion.calidad +
+                        selectedEmpresa.evaluacion.flexibilidad) /
+                      3;
+                    return (
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${
+                          avg >= 4.0
+                            ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                            : avg >= 2.5
+                            ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                            : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                        }`}
+                        title={`Última evaluación de desempeño: ${avg.toFixed(1)}/5.0`}
+                      >
+                        <span>⭐ KPI: {avg.toFixed(1)}/5</span>
+                      </span>
+                    );
+                  })()}
+              </div>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -566,47 +784,87 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
 
         {/* Body */}
         <div className="p-6 space-y-6 flex-1 overflow-y-auto">
-          {/* Action Toolbar */}
-          <div className="flex flex-wrap gap-2 pb-4 border-b border-slate-100">
-            <button
-              onClick={() => onGeneratePDF(selectedEmpresa)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-all cursor-pointer"
-            >
-              <File className="w-4 h-4" /> Exportar PDF
-            </button>
-            <button
-              onClick={() => onGeocodeManual(selectedEmpresa.id!)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-all cursor-pointer"
-            >
-              <MapPin className="w-4 h-4" /> Fijar ubicación
-            </button>
-            {selectedEmpresa._lat && selectedEmpresa._lon && (
-              <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg font-mono font-medium">
-                📍 {selectedEmpresa._lat.toFixed(5)}, {selectedEmpresa._lon.toFixed(5)}
-              </span>
-            )}
-            <button
-              onClick={generateAiInsights}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-all cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4" /> Análisis IA Copilot
-            </button>
-            <button
-              onClick={() => {
-                askConfirmation(
-                  "¿Eliminar Proveedor?",
-                  `¿Estás seguro de que deseas eliminar permanentemente a "${selectedEmpresa.nombre}"? Esta acción borrará el proveedor y no se podrá deshacer.`,
-                  () => {
-                    onDeleteEmpresa(selectedEmpresa.id!);
+          {/* Action Toolbar for existing companies */}
+          {!isCreating && selectedEmpresa?.id && (
+            <div className="flex flex-wrap gap-2 pb-4 border-b border-slate-100">
+              <button
+                onClick={() => onGeneratePDF(selectedEmpresa)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-all cursor-pointer"
+              >
+                <File className="w-4 h-4" /> Exportar PDF
+              </button>
+              <button
+                onClick={() => onGeocodeManual(selectedEmpresa.id!)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 transition-all cursor-pointer"
+              >
+                <MapPin className="w-4 h-4" /> Fijar ubicación
+              </button>
+              {selectedEmpresa._lat && selectedEmpresa._lon && (
+                <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-lg font-mono font-medium">
+                  📍 {selectedEmpresa._lat.toFixed(5)}, {selectedEmpresa._lon.toFixed(5)}
+                </span>
+              )}
+              <button
+                onClick={generateAiInsights}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-200 hover:bg-indigo-100 transition-all cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" /> Análisis IA Copilot
+              </button>
+              <button
+                onClick={() => {
+                  askConfirmation(
+                    "¿Eliminar Proveedor?",
+                    `¿Estás seguro de que deseas eliminar permanentemente a "${selectedEmpresa.nombre}"? Esta acción borrará el proveedor y no se podrá deshacer.`,
+                    () => {
+                      onDeleteEmpresa(selectedEmpresa.id!);
+                      onClose();
+                    }
+                  );
+                }}
+                className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-50 text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-all cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" /> Eliminar
+              </button>
+            </div>
+          )}
+
+          {/* Duplicate Supplier Banner */}
+          {duplicateEmpresa && (
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start justify-between gap-3 shadow-xs">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+                <div>
+                  <h4 className="text-xs font-bold text-amber-900">
+                    Posible proveedor duplicado detectado
+                  </h4>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    Ya existe una empresa registrada como <strong>"{duplicateEmpresa.nombre}"</strong>
+                    {duplicateEmpresa.nit ? ` con CIF/NIT "${duplicateEmpresa.nit}"` : ''}.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOpenEmpresa && duplicateEmpresa.id) {
                     onClose();
+                    onOpenEmpresa(duplicateEmpresa.id);
                   }
-                );
-              }}
-              className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-50 text-rose-600 hover:bg-rose-50 hover:text-rose-700 transition-all cursor-pointer"
-            >
-              <Trash2 className="w-4 h-4" /> Eliminar
-            </button>
-          </div>
+                }}
+                className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition-colors shrink-0 cursor-pointer shadow-xs"
+              >
+                Ver Ficha Existente
+              </button>
+            </div>
+          )}
+
+          {/* Creation Error Banner */}
+          {createError && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold text-rose-700 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{createError}</span>
+            </div>
+          )}
 
           {/* AI Insights Display */}
           {aiLoading && (
@@ -636,6 +894,32 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
             </div>
           )}
 
+          {/* Nombre de la Empresa / Razón Social (Bloque Superior Destacado) */}
+          <div className="p-4 bg-indigo-50/40 border border-indigo-100 rounded-2xl">
+            <label className="block text-xs font-bold text-indigo-950 uppercase flex items-center justify-between mb-1">
+              <span className="flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5 text-indigo-600" />
+                Nombre de la Empresa / Razón Social *
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">
+                {isCreating ? 'Obligatorio' : 'Se guarda automáticamente'}
+              </span>
+            </label>
+            <input
+              type="text"
+              required
+              value={localNombre}
+              onChange={(e) => {
+                setLocalNombre(e.target.value);
+                setCreateError(null);
+                if (!isCreating) handleInlineSave('nombre', e.target.value);
+              }}
+              onBlur={() => !isCreating && handleBlurSave('nombre', localNombre)}
+              placeholder="Ej. Suministros Industriales Ibérica S.L."
+              className="w-full bg-white border border-slate-200 rounded-lg py-2 px-3 text-sm font-bold text-slate-800 focus:border-indigo-500 outline-none transition-all shadow-2xs"
+            />
+          </div>
+
           {/* Direct contact shortcuts */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
             <div>
@@ -643,13 +927,18 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
               <div className="flex items-center gap-1 mt-0.5">
                 <input
                   type="text"
-                  value={selectedEmpresa.telefono || ''}
-                  onChange={(e) => handleInlineSave('telefono', e.target.value)}
+                  value={localTelefono}
+                  onChange={(e) => {
+                    setLocalTelefono(e.target.value);
+                    if (!isCreating) handleInlineSave('telefono', e.target.value);
+                  }}
+                  onBlur={() => !isCreating && handleBlurSave('telefono', localTelefono)}
+                  placeholder="Ej. +34 912 345 678"
                   className="bg-transparent border-b border-dashed border-slate-300 text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500 w-full py-0.5"
                 />
-                {selectedEmpresa.telefono && (
+                {localTelefono && (
                   <a
-                    href={`tel:${selectedEmpresa.telefono}`}
+                    href={`tel:${localTelefono}`}
                     className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
                     title="Llamar"
                   >
@@ -663,13 +952,18 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
               <div className="flex items-center gap-1 mt-0.5">
                 <input
                   type="text"
-                  value={selectedEmpresa.email || ''}
-                  onChange={(e) => handleInlineSave('email', e.target.value)}
+                  value={localEmail}
+                  onChange={(e) => {
+                    setLocalEmail(e.target.value);
+                    if (!isCreating) handleInlineSave('email', e.target.value);
+                  }}
+                  onBlur={() => !isCreating && handleBlurSave('email', localEmail)}
+                  placeholder="Ej. contacto@empresa.com"
                   className="bg-transparent border-b border-dashed border-slate-300 text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500 w-full py-0.5"
                 />
-                {selectedEmpresa.email && (
+                {localEmail && (
                   <a
-                    href={`mailto:${selectedEmpresa.email}`}
+                    href={`mailto:${localEmail}`}
                     className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"
                     title="Escribir correo"
                   >
@@ -683,16 +977,21 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
               <div className="flex items-center gap-1 mt-0.5">
                 <input
                   type="text"
-                  value={selectedEmpresa.web || ''}
-                  onChange={(e) => handleInlineSave('web', e.target.value)}
+                  value={localWeb}
+                  onChange={(e) => {
+                    setLocalWeb(e.target.value);
+                    if (!isCreating) handleInlineSave('web', e.target.value);
+                  }}
+                  onBlur={() => !isCreating && handleBlurSave('web', localWeb)}
+                  placeholder="Ej. www.empresa.com"
                   className="bg-transparent border-b border-dashed border-slate-300 text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500 w-full py-0.5"
                 />
-                {selectedEmpresa.web && (
+                {localWeb && (
                   <a
                     href={
-                      selectedEmpresa.web.startsWith('http')
-                        ? selectedEmpresa.web
-                        : `https://${selectedEmpresa.web}`
+                      localWeb.startsWith('http')
+                        ? localWeb
+                        : `https://${localWeb}`
                     }
                     target="_blank"
                     rel="noopener noreferrer"
@@ -714,8 +1013,12 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
               </label>
               <input
                 type="text"
-                value={selectedEmpresa.grupo || ''}
-                onChange={(e) => handleInlineSave('grupo', e.target.value)}
+                value={localGrupo}
+                onChange={(e) => {
+                  setLocalGrupo(e.target.value);
+                  if (!isCreating) handleInlineSave('grupo', e.target.value);
+                }}
+                onBlur={() => !isCreating && handleBlurSave('grupo', localGrupo)}
                 placeholder="Ej. Grupo Mondragón, Holding..."
                 className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
               />
@@ -726,8 +1029,14 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
               </label>
               <input
                 type="text"
-                value={selectedEmpresa.nit || ''}
-                onChange={(e) => handleInlineSave('nit', e.target.value)}
+                value={localNit}
+                onChange={(e) => {
+                  setLocalNit(e.target.value);
+                  setCreateError(null);
+                  if (!isCreating) handleInlineSave('nit', e.target.value);
+                }}
+                onBlur={() => !isCreating && handleBlurSave('nit', localNit)}
+                placeholder="Ej. B12345678"
                 className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
               />
             </div>
@@ -736,8 +1045,13 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                 <label className="block text-xs font-bold text-slate-500 uppercase">Dirección</label>
                 <input
                   type="text"
-                  value={selectedEmpresa.direccion || ''}
-                  onChange={(e) => handleInlineSave('direccion', e.target.value)}
+                  value={localDireccion}
+                  onChange={(e) => {
+                    setLocalDireccion(e.target.value);
+                    if (!isCreating) handleInlineSave('direccion', e.target.value);
+                  }}
+                  onBlur={() => !isCreating && handleBlurSave('direccion', localDireccion)}
+                  placeholder="Ej. Polígono Industrial Las Avenidas, Nave 4"
                   className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
                 />
               </div>
@@ -746,8 +1060,13 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                   <label className="block text-xs font-bold text-slate-500 uppercase">Código Postal</label>
                   <input
                     type="text"
-                    value={selectedEmpresa.cp || ''}
-                    onChange={(e) => handleInlineSave('cp', e.target.value)}
+                    value={localCp}
+                    onChange={(e) => {
+                      setLocalCp(e.target.value);
+                      if (!isCreating) handleInlineSave('cp', e.target.value);
+                    }}
+                    onBlur={() => !isCreating && handleBlurSave('cp', localCp)}
+                    placeholder="28001"
                     className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
                   />
                 </div>
@@ -755,8 +1074,13 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                   <label className="block text-xs font-bold text-slate-500 uppercase">Ciudad</label>
                   <input
                     type="text"
-                    value={selectedEmpresa.ciudad || ''}
-                    onChange={(e) => handleInlineSave('ciudad', e.target.value)}
+                    value={localCiudad}
+                    onChange={(e) => {
+                      setLocalCiudad(e.target.value);
+                      if (!isCreating) handleInlineSave('ciudad', e.target.value);
+                    }}
+                    onBlur={() => !isCreating && handleBlurSave('ciudad', localCiudad)}
+                    placeholder="Madrid"
                     className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
                   />
                 </div>
@@ -765,8 +1089,13 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                 <label className="block text-xs font-bold text-slate-500 uppercase">Provincia</label>
                 <input
                   type="text"
-                  value={selectedEmpresa.provincia || ''}
-                  onChange={(e) => handleInlineSave('provincia', e.target.value)}
+                  value={localProvincia}
+                  onChange={(e) => {
+                    setLocalProvincia(e.target.value);
+                    if (!isCreating) handleInlineSave('provincia', e.target.value);
+                  }}
+                  onBlur={() => !isCreating && handleBlurSave('provincia', localProvincia)}
+                  placeholder="Madrid"
                   className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
                 />
               </div>
@@ -774,22 +1103,29 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                 <label className="block text-xs font-bold text-slate-500 uppercase">País</label>
                 <input
                   type="text"
-                  value={selectedEmpresa.pais || ''}
+                  value={localPais}
                   onFocus={() => setShowCountrySuggestions(true)}
-                  onBlur={() => setTimeout(() => setShowCountrySuggestions(false), 200)}
-                  onChange={(e) => handleInlineSave('pais', e.target.value)}
+                  onBlur={() => {
+                    setTimeout(() => setShowCountrySuggestions(false), 200);
+                    if (!isCreating) handleBlurSave('pais', localPais);
+                  }}
+                  onChange={(e) => {
+                    setLocalPais(e.target.value);
+                    if (!isCreating) handleInlineSave('pais', e.target.value);
+                  }}
                   className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
                   placeholder="Escribe para buscar país..."
                 />
                 {showCountrySuggestions && (
                   <div className="absolute left-0 right-0 mt-1 max-h-48 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl z-50 py-1 divide-y divide-slate-50">
-                    {PAISES.filter((p) => p.toLowerCase().includes((selectedEmpresa.pais || '').toLowerCase())).map(
+                    {PAISES.filter((p) => p.toLowerCase().includes((localPais || '').toLowerCase())).map(
                       (p, idx) => (
                         <button
                           key={idx}
                           type="button"
                           onMouseDown={() => {
-                            handleInlineSave('pais', p);
+                            setLocalPais(p);
+                            if (!isCreating) handleInlineSave('pais', p);
                             setShowCountrySuggestions(false);
                           }}
                           className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors cursor-pointer"
@@ -818,8 +1154,8 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                   otros: '📦 Otros',
                 };
                 const isChecked =
-                  selectedEmpresa.tipo === tipoOption ||
-                  (selectedEmpresa.esTambien || []).includes(tipoOption);
+                  localTipo === tipoOption ||
+                  localEsTambien.includes(tipoOption);
 
                 return (
                   <label
@@ -831,8 +1167,8 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                       checked={isChecked}
                       onChange={async (e) => {
                         const checked = e.target.checked;
-                        let newTipo = selectedEmpresa.tipo;
-                        let newEsTambien = [...(selectedEmpresa.esTambien || [])];
+                        let newTipo = localTipo;
+                        let newEsTambien = [...localEsTambien];
 
                         if (checked) {
                           if (newTipo !== tipoOption) {
@@ -852,11 +1188,15 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                             newEsTambien = newEsTambien.filter((t) => t !== tipoOption);
                           }
                         }
-                        await onUpdateEmpresa({
-                          ...selectedEmpresa,
-                          tipo: newTipo,
-                          esTambien: newEsTambien,
-                        });
+                        setLocalTipo(newTipo);
+                        setLocalEsTambien(newEsTambien);
+                        if (!isCreating && selectedEmpresa?.id) {
+                          await onUpdateEmpresa({
+                            ...selectedEmpresa,
+                            tipo: newTipo,
+                            esTambien: newEsTambien,
+                          });
+                        }
                       }}
                       className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 cursor-pointer"
                     />
@@ -874,12 +1214,12 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
             </label>
 
             <div className="flex flex-wrap gap-2 mb-3">
-              {(selectedEmpresa.unspscCodes || []).length === 0 ? (
+              {localUnspscCodes.length === 0 ? (
                 <span className="text-xs text-slate-400 italic">
                   No se han asignado códigos UNSPSC a esta empresa.
                 </span>
               ) : (
-                (selectedEmpresa.unspscCodes || []).map((item) => (
+                localUnspscCodes.map((item) => (
                   <span
                     key={item.code}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-bold"
@@ -890,10 +1230,7 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                     <span>{item.name}</span>
                     <button
                       type="button"
-                      onClick={async () => {
-                        const updated = (selectedEmpresa.unspscCodes || []).filter((u) => u.code !== item.code);
-                        await onUpdateEmpresa({ ...selectedEmpresa, unspscCodes: updated });
-                      }}
+                      onClick={() => handleRemoveUnspsc(item.code)}
                       className="hover:bg-indigo-100 rounded p-0.5 text-indigo-500 hover:text-rose-600 transition-colors ml-1 cursor-pointer font-bold"
                     >
                       ✕
@@ -953,7 +1290,7 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                     </div>
                   ) : (
                     filteredUnspscOptions.map((item) => {
-                      const isAlreadySelected = (selectedEmpresa.unspscCodes || []).some(
+                      const isAlreadySelected = localUnspscCodes.some(
                         (u) => u.code === item.code
                       );
                       return (
@@ -961,13 +1298,7 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                           key={item.code}
                           type="button"
                           disabled={isAlreadySelected}
-                          onClick={async () => {
-                            const current = selectedEmpresa.unspscCodes || [];
-                            const updated = [...current, item];
-                            await onUpdateEmpresa({ ...selectedEmpresa, unspscCodes: updated });
-                            setUnspscSearch('');
-                            setUnspscShowDropdown(false);
-                          }}
+                          onClick={() => handleAddUnspsc(item)}
                           className="w-full text-left px-4 py-2.5 hover:bg-slate-50 transition-colors flex items-center justify-between text-xs cursor-pointer disabled:opacity-50"
                         >
                           <div className="truncate pr-4 flex items-center">
@@ -1062,9 +1393,8 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                         alert('Por favor introduce un nombre o descripción.');
                         return;
                       }
-                      const current = selectedEmpresa.unspscCodes || [];
                       const newItem = { code: manualCode, name: manualName.trim(), segment: 'Personalizado' };
-                      await onUpdateEmpresa({ ...selectedEmpresa, unspscCodes: [...current, newItem] });
+                      await handleAddUnspsc(newItem);
                       setShowManualUnspsc(false);
                       setManualCode('');
                       setManualName('');
@@ -1084,7 +1414,7 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
               Materiales / Categorías de Suministro (Tags)
             </label>
             <div className="flex flex-wrap gap-1.5 p-3 border border-slate-200 rounded-xl bg-slate-50">
-              {selectedEmpresa.tags.map((tag, idx) => (
+              {localTags.map((tag, idx) => (
                 <span
                   key={idx}
                   className="inline-flex items-center gap-1 bg-white border border-slate-200 text-slate-700 px-2.5 py-1 rounded-full text-xs font-semibold shadow-sm hover:border-slate-300"
@@ -1092,6 +1422,7 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                   <Tag className="w-3 h-3 text-indigo-500" />
                   {tag}
                   <button
+                    type="button"
                     onClick={() => handleRemoveTag(tag)}
                     className="text-slate-400 hover:text-rose-600 font-bold ml-1 cursor-pointer"
                   >
@@ -1115,8 +1446,6 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                       e.preventDefault();
                       if (newTagInput.trim()) {
                         handleAddTag(newTagInput.trim());
-                        setNewTagInput('');
-                        setShowTagSuggestions(false);
                       }
                     }
                   }}
@@ -1129,8 +1458,6 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                         type="button"
                         onMouseDown={() => {
                           handleAddTag(newTagInput.trim());
-                          setNewTagInput('');
-                          setShowTagSuggestions(false);
                         }}
                         className="w-full text-left px-3.5 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50 flex items-center gap-1.5 transition-colors cursor-pointer"
                       >
@@ -1142,7 +1469,7 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                       .filter(
                         (tag) =>
                           tag.toLowerCase().includes(newTagInput.trim().toLowerCase()) &&
-                          !selectedEmpresa.tags.includes(tag)
+                          !localTags.includes(tag)
                       )
                       .map((tag, idx) => (
                         <button
@@ -1150,8 +1477,6 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                           type="button"
                           onMouseDown={() => {
                             handleAddTag(tag);
-                            setNewTagInput('');
-                            setShowTagSuggestions(false);
                           }}
                           className="w-full text-left px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
@@ -1173,26 +1498,37 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                   <span>🌳 Organigrama / Jerarquía de Contactos</span>
                 </h4>
                 <p className="text-[11px] text-slate-400 font-normal mt-0.5">
-                  Haz clic sobre cualquier contacto para abrir su ficha y modificar a quién reporta.
+                  {isCreating
+                    ? 'Podrás añadir y estructurar el equipo de contactos una vez creado el proveedor.'
+                    : 'Haz clic sobre cualquier contacto para abrir su ficha y modificar a quién reporta.'}
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => onOpenCreateContacto?.(selectedEmpresa.id!)}
-                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-150 transition-all cursor-pointer shrink-0 shadow-2xs"
-              >
-                <Plus className="w-3.5 h-3.5" /> + Nuevo Contacto
-              </button>
+              {!isCreating && selectedEmpresa?.id && (
+                <button
+                  type="button"
+                  onClick={() => onOpenCreateContacto?.(selectedEmpresa.id!)}
+                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg border border-indigo-150 transition-all cursor-pointer shrink-0 shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5" /> + Nuevo Contacto
+                </button>
+              )}
             </div>
 
-            {/* Organigrama modular */}
-            <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-150">
-              <OrganigramaTree
-                contactosEmpresa={contactosEmpresa}
-                todosContactos={contactos}
-                onSelectContacto={onOpenContacto}
-              />
-            </div>
+            {isCreating ? (
+              <div className="p-6 bg-slate-50/60 rounded-xl border border-slate-200/80 text-center">
+                <p className="text-xs text-slate-500 font-medium">
+                  👥 Podrás añadir y organizar los contactos de la empresa una vez guardado el proveedor.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-150">
+                <OrganigramaTree
+                  contactosEmpresa={contactosEmpresa}
+                  todosContactos={contactos}
+                  onSelectContacto={onOpenContacto}
+                />
+              </div>
+            )}
           </div>
 
           {/* Relaciones Fabricante / Distribuidor */}
@@ -1202,507 +1538,475 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                 <span>🔗 Red de Distribución y Alianzas</span>
               </h4>
 
-              {isFabricante && (
-                <div className="bg-slate-50/50 rounded-2xl border border-slate-200 p-4 space-y-4">
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      🚚 Distribuidores Autorizados de sus Productos
-                    </h5>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Empresas que distribuyen los productos fabricados por esta empresa.
-                    </p>
-                  </div>
-
-                  {(() => {
-                    const distRels = relaciones.filter((r) => r.fabricanteId === selectedEmpresa.id);
-                    if (distRels.length === 0) {
-                      return <p className="text-xs text-slate-400 italic">No hay distribuidores asignados aún.</p>;
-                    }
-                    return (
-                      <div className="space-y-2">
-                        {distRels.map((rel) => {
-                          const dist = empresas.find((e) => e.id === rel.distribuidorId);
-                          if (!dist) return null;
-                          return (
-                            <div
-                              key={rel.id}
-                              className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl"
-                            >
-                              <div className="flex items-center gap-3">
-                                <span className="text-lg">🚚</span>
-                                <div>
-                                  <button
-                                    type="button"
-                                    onClick={() => onOpenEmpresa?.(dist.id!)}
-                                    className="font-bold text-xs text-slate-800 hover:text-indigo-600"
-                                  >
-                                    {dist.nombre}
-                                  </button>
-                                  <p className="text-[10px] text-slate-400">
-                                    {dist.ciudad || 'Sin ciudad'} {dist.pais ? `· ${dist.pais}` : ''}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const nextPref = rel.preferente === 'si' ? 'no' : 'si';
-                                    await onUpdateRelacion({ ...rel, preferente: nextPref });
-                                  }}
-                                  className={`text-[10px] font-bold px-2 py-1 rounded-md border cursor-pointer ${
-                                    rel.preferente === 'si'
-                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                      : 'bg-slate-50 text-slate-500 border-slate-200'
-                                  }`}
-                                >
-                                  {rel.preferente === 'si' ? '⭐ Preferente' : 'Normal'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => onDeleteRelacion(rel.id!)}
-                                  className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
-                                  title="Desvincular"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    );
-                  })()}
-
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
-                    <RelacionAutocomplete
-                      empresas={empresas}
-                      tipoEsperado="distribuidor"
-                      currentEmpresaId={selectedEmpresa.id!}
-                      alreadyLinkedIds={relaciones
-                        .filter((r) => r.fabricanteId === selectedEmpresa.id)
-                        .map((r) => r.distribuidorId)}
-                      onSelectExisting={async (id) => {
-                        await onAddRelacion(selectedEmpresa.id!, id, 'no');
-                      }}
-                      onCreateAndSelect={async (name) => {
-                        const newId = await onAddEmpresaRapida(name, 'distribuidor');
-                        if (newId) {
-                          await onAddRelacion(selectedEmpresa.id!, newId, 'no');
-                        }
-                      }}
-                      placeholder="Buscar o crear distribuidor para vincular..."
-                    />
-                  </div>
+              {isCreating ? (
+                <div className="p-6 bg-slate-50/60 rounded-xl border border-slate-200/80 text-center">
+                  <p className="text-xs text-slate-500 font-medium">
+                    🔗 Las alianzas comerciales y la red de distribución podrán gestionarse una vez guardado el proveedor.
+                  </p>
                 </div>
-              )}
-
-              {isDistribuidor && (
-                <div className="bg-slate-50/50 rounded-2xl border border-slate-200 p-4 space-y-4">
-                  <div>
-                    <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      🏭 Fabricantes Representados
-                    </h5>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Marcas y fabricantes que este distribuidor comercializa oficialmente.
-                    </p>
-                  </div>
-
-                  {(() => {
-                    const fabRels = relaciones.filter((r) => r.distribuidorId === selectedEmpresa.id);
-                    if (fabRels.length === 0) {
-                      return <p className="text-xs text-slate-400 italic">No hay fabricantes vinculados aún.</p>;
-                    }
-                    return (
-                      <div className="space-y-2">
-                        {fabRels.map((rel) => {
-                          const fab = empresas.find((e) => e.id === rel.fabricanteId);
-                          if (!fab) return null;
-                          return (
-                            <div
-                              key={rel.id}
-                              className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl"
-                            >
-                              <div className="flex items-center gap-3">
-                                <span className="text-lg">🏭</span>
-                                <div>
-                                  <button
-                                    type="button"
-                                    onClick={() => onOpenEmpresa?.(fab.id!)}
-                                    className="font-bold text-xs text-slate-800 hover:text-indigo-600"
-                                  >
-                                    {fab.nombre}
-                                  </button>
-                                  <p className="text-[10px] text-slate-400">
-                                    {fab.ciudad || 'Sin ciudad'} {fab.pais ? `· ${fab.pais}` : ''}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={async () => {
-                                    const nextPref = rel.preferente === 'si' ? 'no' : 'si';
-                                    await onUpdateRelacion({ ...rel, preferente: nextPref });
-                                  }}
-                                  className={`text-[10px] font-bold px-2 py-1 rounded-md border cursor-pointer ${
-                                    rel.preferente === 'si'
-                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                      : 'bg-slate-50 text-slate-500 border-slate-200'
-                                  }`}
-                                >
-                                  {rel.preferente === 'si' ? '⭐ Preferente' : 'Normal'}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => onDeleteRelacion(rel.id!)}
-                                  className="text-slate-400 hover:text-rose-600 p-1 cursor-pointer"
-                                  title="Desvincular"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
+              ) : (
+                <>
+                  {isFabricante && (
+                    <div className="bg-slate-50/50 rounded-2xl border border-slate-200 p-4 space-y-4">
+                      <div>
+                        <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          🚚 Distribuidores Autorizados de sus Productos
+                        </h5>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Empresas que distribuyen los productos fabricados por esta empresa.
+                        </p>
                       </div>
-                    );
-                  })()}
 
-                  <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
-                    <RelacionAutocomplete
-                      empresas={empresas}
-                      tipoEsperado="fabricante"
-                      currentEmpresaId={selectedEmpresa.id!}
-                      alreadyLinkedIds={relaciones
-                        .filter((r) => r.distribuidorId === selectedEmpresa.id)
-                        .map((r) => r.fabricanteId)}
-                      onSelectExisting={async (id) => {
-                        await onAddRelacion(id, selectedEmpresa.id!, 'no');
-                      }}
-                      onCreateAndSelect={async (name) => {
-                        const newId = await onAddEmpresaRapida(name, 'fabricante');
-                        if (newId) {
-                          await onAddRelacion(newId, selectedEmpresa.id!, 'no');
+                      {(() => {
+                        const distRels = relaciones.filter((r) => r.fabricanteId === selectedEmpresa?.id);
+                        if (distRels.length === 0) {
+                          return <p className="text-xs text-slate-400 italic">No hay distribuidores asignados aún.</p>;
                         }
-                      }}
-                      placeholder="Buscar o crear fabricante para vincular..."
-                    />
-                  </div>
-                </div>
+                        return (
+                          <div className="space-y-2">
+                            {distRels.map((rel) => {
+                              const dist = empresas.find((e) => e.id === rel.distribuidorId);
+                              if (!dist) return null;
+                              return (
+                                <div
+                                  key={rel.id}
+                                  className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-lg">🚚</span>
+                                    <div>
+                                      <button
+                                        type="button"
+                                        onClick={() => onOpenEmpresa?.(dist.id!)}
+                                        className="font-bold text-xs text-slate-800 hover:text-indigo-600"
+                                      >
+                                        {dist.nombre}
+                                      </button>
+                                      <p className="text-[10px] text-slate-400">
+                                        {dist.ciudad || 'Sin ciudad'} {dist.pais ? `· ${dist.pais}` : ''}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const nextPref = rel.preferente === 'si' ? 'no' : 'si';
+                                        await onUpdateRelacion({ ...rel, preferente: nextPref });
+                                      }}
+                                      className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                                        rel.preferente === 'si'
+                                          ? 'bg-amber-50 text-amber-700 border-amber-300'
+                                          : 'bg-slate-50 text-slate-500 border-slate-200'
+                                      }`}
+                                    >
+                                      {rel.preferente === 'si' ? '⭐ Preferente' : 'Normal'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => onDeleteRelacion(rel.id!)}
+                                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                                      title="Desvincular distribuidor"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+
+                      <div className="pt-2 border-t border-slate-200/60 flex items-center gap-2">
+                        <RelacionAutocomplete
+                          empresas={empresas}
+                          tipoEsperado="distribuidor"
+                          placeholder="Buscar distribuidor por nombre o CIF para vincular..."
+                          currentEmpresaId={selectedEmpresa?.id || ''}
+                          alreadyLinkedIds={relaciones
+                            .filter((r) => r.fabricanteId === selectedEmpresa?.id)
+                            .map((r) => r.distribuidorId)}
+                          onSelectExisting={async (distId) => {
+                            if (selectedEmpresa?.id) {
+                              await onAddRelacion(selectedEmpresa.id, distId, 'no');
+                            }
+                          }}
+                          onCreateAndSelect={async (name) => {
+                            const newId = await onAddEmpresaRapida(name, 'distribuidor');
+                            if (newId && selectedEmpresa?.id) {
+                              await onAddRelacion(selectedEmpresa.id, newId, 'no');
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {isDistribuidor && (
+                    <div className="bg-slate-50/50 rounded-2xl border border-slate-200 p-4 space-y-4">
+                      <div>
+                        <h5 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                          🏭 Fabricantes que Representa o Distribuye
+                        </h5>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Empresas fabricantes cuyos productos son distribuidos por este proveedor.
+                        </p>
+                      </div>
+
+                      {(() => {
+                        const fabRels = relaciones.filter((r) => r.distribuidorId === selectedEmpresa?.id);
+                        if (fabRels.length === 0) {
+                          return <p className="text-xs text-slate-400 italic">No hay fabricantes representados aún.</p>;
+                        }
+                        return (
+                          <div className="space-y-2">
+                            {fabRels.map((rel) => {
+                              const fab = empresas.find((e) => e.id === rel.fabricanteId);
+                              if (!fab) return null;
+                              return (
+                                <div
+                                  key={rel.id}
+                                  className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-xl"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-lg">🏭</span>
+                                    <div>
+                                      <button
+                                        type="button"
+                                        onClick={() => onOpenEmpresa?.(fab.id!)}
+                                        className="font-bold text-xs text-slate-800 hover:text-indigo-600"
+                                      >
+                                        {fab.nombre}
+                                      </button>
+                                      <p className="text-[10px] text-slate-400">
+                                        {fab.ciudad || 'Sin ciudad'} {fab.pais ? `· ${fab.pais}` : ''}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const nextPref = rel.preferente === 'si' ? 'no' : 'si';
+                                        await onUpdateRelacion({ ...rel, preferente: nextPref });
+                                      }}
+                                      className={`px-2.5 py-1 text-[10px] font-bold rounded-lg border transition-all cursor-pointer ${
+                                        rel.preferente === 'si'
+                                          ? 'bg-amber-50 text-amber-700 border-amber-300'
+                                          : 'bg-slate-50 text-slate-500 border-slate-200'
+                                      }`}
+                                    >
+                                      {rel.preferente === 'si' ? '⭐ Preferente' : 'Normal'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => onDeleteRelacion(rel.id!)}
+                                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg cursor-pointer"
+                                      title="Desvincular fabricante"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+
+                      <div className="pt-2 border-t border-slate-200/60 flex items-center gap-2">
+                        <RelacionAutocomplete
+                          empresas={empresas}
+                          tipoEsperado="fabricante"
+                          placeholder="Buscar fabricante por nombre o CIF para vincular..."
+                          currentEmpresaId={selectedEmpresa?.id || ''}
+                          alreadyLinkedIds={relaciones
+                            .filter((r) => r.distribuidorId === selectedEmpresa?.id)
+                            .map((r) => r.fabricanteId)}
+                          onSelectExisting={async (fabId) => {
+                            if (selectedEmpresa?.id) {
+                              await onAddRelacion(fabId, selectedEmpresa.id, 'no');
+                            }
+                          }}
+                          onCreateAndSelect={async (name) => {
+                            const newId = await onAddEmpresaRapida(name, 'fabricante');
+                            if (newId && selectedEmpresa?.id) {
+                              await onAddRelacion(newId, selectedEmpresa.id, 'no');
+                            }
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
 
           {/* Historial de Interacciones */}
-          <div className="border-t border-slate-100 pt-5">
-            {(() => {
-              const cids = contactosEmpresa.map((c) => c.id).filter(Boolean) as string[];
-              const interaccionesEmpresa = interacciones.filter((i) => {
-                const hasEmpresaId = i.empresaIds?.includes(selectedEmpresa.id!);
-                const hasPrimaryContacto = i.contactoId && cids.includes(i.contactoId);
-                const hasAnyContacto = i.contactoIds?.some((cid) => cids.includes(cid));
-                return hasEmpresaId || hasPrimaryContacto || hasAnyContacto;
-              });
+          <div className="border-t border-slate-200 pt-5">
+            {isCreating ? (
+              <div className="p-6 bg-slate-50/60 rounded-xl border border-slate-200/80 text-center">
+                <p className="text-xs text-slate-500 font-medium">
+                  📅 Podrás registrar reuniones, llamadas y correos en el historial tras guardar el proveedor.
+                </p>
+              </div>
+            ) : (
+              (() => {
+                const cids = contactosEmpresa.map((c) => c.id).filter(Boolean) as string[];
+                const interaccionesEmpresa = interacciones.filter((i) => {
+                  const hasEmpresaId = i.empresaIds?.includes(selectedEmpresa?.id || '');
+                  const hasPrimaryContacto = i.contactoId && cids.includes(i.contactoId);
+                  const hasAnyContacto = i.contactoIds?.some((cid) => cids.includes(cid));
+                  return hasEmpresaId || hasPrimaryContacto || hasAnyContacto;
+                });
 
-              return (
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <h4 className="font-bold text-slate-800 text-sm">
-                      Historial de Interacciones con el Proveedor
-                    </h4>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowAddInterFormEmp(!showAddInterFormEmp)}
-                        className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-100 transition-colors cursor-pointer"
-                      >
-                        {showAddInterFormEmp ? '✕ Cancelar' : '+ Nueva Interacción'}
-                      </button>
-                      <span className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-normal">
-                        {interaccionesEmpresa.length}{' '}
-                        {interaccionesEmpresa.length === 1 ? 'Interacción' : 'Interacciones'}
-                      </span>
+                return (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <h4 className="font-bold text-slate-800 text-sm">
+                        Historial de Interacciones con el Proveedor
+                      </h4>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddInterFormEmp(!showAddInterFormEmp)}
+                          className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-100 transition-colors cursor-pointer"
+                        >
+                          {showAddInterFormEmp ? '✕ Cancelar' : '+ Nueva Interacción'}
+                        </button>
+                        <span className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-normal">
+                          {interaccionesEmpresa.length}{' '}
+                          {interaccionesEmpresa.length === 1 ? 'Interacción' : 'Interacciones'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                  <p className="text-[11px] text-slate-400 mb-4 font-normal">
-                    Muestra todas las reuniones, llamadas y correos asociados a este proveedor.
-                  </p>
+                    <p className="text-[11px] text-slate-400 mb-4 font-normal">
+                      Muestra todas las reuniones, llamadas y correos asociados a este proveedor.
+                    </p>
 
-                  {showAddInterFormEmp && (
-                    <form
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        if (!newInterFormEmp.asunto) return;
+                    {showAddInterFormEmp && (
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          if (!newInterFormEmp.asunto) return;
 
-                        const contactId = newInterFormEmp.contactoId || (contactosEmpresa[0]?.id || '');
-                        const finalContactIds = contactId ? [contactId] : [];
+                          const contactId = newInterFormEmp.contactoId || (contactosEmpresa[0]?.id || '');
+                          const finalContactIds = contactId ? [contactId] : [];
 
-                        await onUpdateInteraccion({
-                          asunto: newInterFormEmp.asunto,
-                          tipo: newInterFormEmp.tipo,
-                          fecha: newInterFormEmp.fecha,
-                          contactoId: contactId,
-                          contactoIds: finalContactIds,
-                          empresaIds: [selectedEmpresa.id!],
-                          descripcion: newInterFormEmp.descripcion,
-                          estado: newInterFormEmp.estado,
-                          resolucion: '',
-                          pasos: [],
-                        });
-                        setShowAddInterFormEmp(false);
-                        setNewInterFormEmp({
-                          asunto: '',
-                          tipo: 'reunion',
-                          fecha: new Date().toISOString().slice(0, 10),
-                          contactoId: '',
-                          descripcion: '',
-                          estado: 'pendiente',
-                        });
-                      }}
-                      className="mb-4 bg-amber-50/40 border border-amber-150 p-4 rounded-xl space-y-3 shadow-sm"
-                    >
-                      <h5 className="text-[11px] font-bold text-amber-950 uppercase tracking-wide">
-                        Crear Nueva Interacción
-                      </h5>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                            Asunto / Título *
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            value={newInterFormEmp.asunto}
-                            onChange={(e) =>
-                              setNewInterFormEmp({ ...newInterFormEmp, asunto: e.target.value })
-                            }
-                            className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none"
-                            placeholder="Ej. Negociación anual de tarifas"
-                          />
+                          await onUpdateInteraccion({
+                            asunto: newInterFormEmp.asunto,
+                            tipo: newInterFormEmp.tipo,
+                            fecha: newInterFormEmp.fecha,
+                            contactoId: contactId,
+                            contactoIds: finalContactIds,
+                            empresaIds: [selectedEmpresa!.id!],
+                            descripcion: newInterFormEmp.descripcion,
+                            estado: newInterFormEmp.estado,
+                            resolucion: '',
+                            pasos: [],
+                          });
+                          setShowAddInterFormEmp(false);
+                          setNewInterFormEmp({
+                            asunto: '',
+                            tipo: 'reunion',
+                            fecha: new Date().toISOString().slice(0, 10),
+                            contactoId: '',
+                            descripcion: '',
+                            estado: 'pendiente',
+                          });
+                        }}
+                        className="mb-4 p-4 bg-indigo-50/40 border border-indigo-100 rounded-xl space-y-3"
+                      >
+                        <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
+                          <h5 className="text-xs font-bold text-indigo-900 uppercase">
+                            Nueva Interacción Rápida
+                          </h5>
+                          <button
+                            type="button"
+                            onClick={() => setShowAddInterFormEmp(false)}
+                            className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                          >
+                            ✕
+                          </button>
                         </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                            Contacto Participante *
-                          </label>
-                          {contactosEmpresa.length === 0 ? (
-                            <div className="text-[11px] text-rose-600 bg-rose-50 border border-rose-100 rounded-lg p-2 mt-1 font-semibold">
-                              ⚠️ Crea un contacto asociado primero.
-                            </div>
-                          ) : (
-                            <select
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                              Asunto *
+                            </label>
+                            <input
+                              type="text"
                               required
-                              value={newInterFormEmp.contactoId || (contactosEmpresa[0]?.id || '')}
+                              placeholder="Ej. Revisión anual de precios"
+                              value={newInterFormEmp.asunto}
+                              onChange={(e) =>
+                                setNewInterFormEmp({ ...newInterFormEmp, asunto: e.target.value })
+                              }
+                              className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                              Contacto de la empresa
+                            </label>
+                            <select
+                              value={newInterFormEmp.contactoId}
                               onChange={(e) =>
                                 setNewInterFormEmp({ ...newInterFormEmp, contactoId: e.target.value })
                               }
-                              className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-indigo-500"
+                              className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
                             >
-                              <option value="">Selecciona un contacto...</option>
+                              <option value="">Seleccionar contacto (opcional)...</option>
                               {contactosEmpresa.map((c) => (
                                 <option key={c.id} value={c.id}>
                                   {c.nombre} ({c.cargo || 'Sin cargo'})
                                 </option>
                               ))}
                             </select>
-                          )}
-                        </div>
-                      </div>
+                          </div>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase">Tipo</label>
-                          <select
-                            value={newInterFormEmp.tipo}
-                            onChange={(e) =>
-                              setNewInterFormEmp({ ...newInterFormEmp, tipo: e.target.value as any })
-                            }
-                            className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-indigo-500"
-                          >
-                            <option value="reunion">🤝 Reunión</option>
-                            <option value="llamada">📞 Llamada</option>
-                            <option value="email">✉️ Correo</option>
-                            <option value="feria">🏢 Feria</option>
-                          </select>
+                          <div>
+                            <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                              Tipo
+                            </label>
+                            <select
+                              value={newInterFormEmp.tipo}
+                              onChange={(e) =>
+                                setNewInterFormEmp({
+                                  ...newInterFormEmp,
+                                  tipo: e.target.value as any,
+                                })
+                              }
+                              className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
+                            >
+                              <option value="reunion">Reunión</option>
+                              <option value="llamada">Llamada</option>
+                              <option value="email">Email</option>
+                              <option value="feria">Feria</option>
+                            </select>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                                Fecha
+                              </label>
+                              <input
+                                type="date"
+                                value={newInterFormEmp.fecha}
+                                onChange={(e) =>
+                                  setNewInterFormEmp({ ...newInterFormEmp, fecha: e.target.value })
+                                }
+                                className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                                Estado
+                              </label>
+                              <select
+                                value={newInterFormEmp.estado}
+                                onChange={(e) =>
+                                  setNewInterFormEmp({
+                                    ...newInterFormEmp,
+                                    estado: e.target.value as any,
+                                  })
+                                }
+                                className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
+                              >
+                                <option value="pendiente">Pendiente</option>
+                                <option value="completada">Completada</option>
+                              </select>
+                            </div>
+                          </div>
                         </div>
+
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase">Fecha *</label>
-                          <input
-                            type="date"
-                            required
-                            value={newInterFormEmp.fecha}
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                            Notas / Descripción
+                          </label>
+                          <textarea
+                            rows={2}
+                            placeholder="Detalles sobre los acuerdos o temas hablados..."
+                            value={newInterFormEmp.descripcion}
                             onChange={(e) =>
-                              setNewInterFormEmp({ ...newInterFormEmp, fecha: e.target.value })
+                              setNewInterFormEmp({
+                                ...newInterFormEmp,
+                                descripcion: e.target.value,
+                              })
                             }
-                            className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1 px-2.5 text-xs outline-none focus:border-indigo-500"
+                            className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
                           />
                         </div>
-                        <div>
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                            Estado inicial
-                          </label>
-                          <select
-                            value={newInterFormEmp.estado}
-                            onChange={(e) =>
-                              setNewInterFormEmp({ ...newInterFormEmp, estado: e.target.value as any })
-                            }
-                            className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-2 text-xs outline-none focus:border-indigo-500"
+
+                        <div className="flex justify-end gap-2 pt-2 border-t border-indigo-100">
+                          <button
+                            type="button"
+                            onClick={() => setShowAddInterFormEmp(false)}
+                            className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 font-bold text-xs rounded-lg hover:bg-slate-50 cursor-pointer"
                           >
-                            <option value="pendiente">⏳ Pendiente</option>
-                            <option value="completada">✅ Completada</option>
-                          </select>
+                            Cancelar
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                          >
+                            Guardar Interacción
+                          </button>
                         </div>
-                      </div>
+                      </form>
+                    )}
 
-                      <div>
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                          Descripción
-                        </label>
-                        <textarea
-                          value={newInterFormEmp.descripcion}
-                          onChange={(e) =>
-                            setNewInterFormEmp({ ...newInterFormEmp, descripcion: e.target.value })
-                          }
-                          rows={2}
-                          className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none resize-none"
-                          placeholder="Describe brevemente los acuerdos..."
-                        />
-                      </div>
-
-                      <div className="flex justify-end gap-2 pt-1">
-                        <button
-                          type="button"
-                          onClick={() => setShowAddInterFormEmp(false)}
-                          className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer"
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={contactosEmpresa.length === 0}
-                          className={`px-3 py-1.5 text-white text-xs font-bold rounded-lg cursor-pointer shadow-sm ${
-                            contactosEmpresa.length === 0
-                              ? 'bg-slate-300 cursor-not-allowed'
-                              : 'bg-indigo-600 hover:bg-indigo-700'
-                          }`}
-                        >
-                          Guardar Interacción
-                        </button>
-                      </div>
-                    </form>
-                  )}
-
-                  {interaccionesEmpresa.length === 0 ? (
-                    <div className="text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                      <p className="text-xs text-slate-500 font-medium">
+                    {interaccionesEmpresa.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">
                         No se han registrado interacciones con este proveedor.
                       </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5 max-h-[300px] overflow-y-auto pr-1">
-                      {interaccionesEmpresa
-                        .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
-                        .map((i) => {
-                          const isCompletada = i.estado === 'completada';
-                          return (
-                            <div
-                              key={i.id}
-                              onClick={() => onOpenInteraccion?.(i.id!)}
-                              className="group flex flex-col p-3 rounded-xl border border-slate-200 bg-white hover:border-indigo-400 hover:shadow-sm transition-all cursor-pointer"
-                            >
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className={`w-2 h-2 rounded-full ${
-                                      isCompletada ? 'bg-emerald-500' : 'bg-rose-500 animate-pulse'
-                                    }`}
-                                  />
-                                  <p className="font-semibold text-slate-800 text-xs group-hover:text-indigo-600 transition-colors">
-                                    {i.asunto}
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-[10px] font-mono text-slate-400 bg-slate-50 px-1.5 py-0.5 rounded border border-slate-150">
-                                    {i.fecha}
-                                  </span>
-                                  <span
-                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
-                                      i.tipo === 'reunion'
-                                        ? 'bg-amber-50 text-amber-700 border border-amber-150'
-                                        : i.tipo === 'llamada'
-                                        ? 'bg-blue-50 text-blue-700 border border-blue-150'
-                                        : i.tipo === 'email'
-                                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-150'
-                                        : 'bg-purple-50 text-purple-700 border border-purple-150'
-                                    }`}
-                                  >
-                                    {i.tipo}
-                                  </span>
-                                </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {interaccionesEmpresa.map((inter) => (
+                          <div
+                            key={inter.id}
+                            onClick={() => onOpenInteraccion?.(inter.id!)}
+                            className="p-3 bg-slate-50 border border-slate-200 rounded-xl hover:border-indigo-300 hover:bg-indigo-50/20 transition-all cursor-pointer flex items-center justify-between"
+                          >
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-xs text-slate-800">
+                                  {inter.asunto}
+                                </span>
+                                <span className="text-[10px] uppercase font-bold text-slate-500 bg-white border border-slate-200 px-1.5 py-0.5 rounded">
+                                  {inter.tipo}
+                                </span>
+                                <span
+                                  className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                    inter.estado === 'completada'
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                      : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  }`}
+                                >
+                                  {inter.estado === 'completada' ? 'Completada' : 'Pendiente'}
+                                </span>
                               </div>
-                              <p className="text-[11px] text-slate-500 line-clamp-2 mt-1.5 pl-4">
-                                {i.descripcion || 'Sin descripción'}
+                              <p className="text-[11px] text-slate-500 mt-1 line-clamp-1">
+                                {inter.descripcion || 'Sin descripción'}
                               </p>
-                              {i.resolucion && (
-                                <div className="text-[10px] text-emerald-700 bg-emerald-50/50 rounded-lg p-2 mt-2 pl-4 border-l-2 border-emerald-400 font-medium">
-                                  <span className="font-bold text-[9px] uppercase tracking-wider block text-emerald-800 mb-0.5">
-                                    Resolución:
-                                  </span>
-                                  {i.resolucion}
-                                </div>
-                              )}
                             </div>
-                          );
-                        })}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-          </div>
-
-          {/* Consorcio / Grupo */}
-          {selectedEmpresa.grupo && selectedEmpresa.grupo.trim() && (() => {
-            const consorcioEmpresas = empresas.filter(
-              (e) =>
-                e.id !== selectedEmpresa.id &&
-                e.grupo &&
-                e.grupo.trim().toLowerCase() === selectedEmpresa.grupo!.trim().toLowerCase()
-            );
-            if (consorcioEmpresas.length === 0) return null;
-            return (
-              <div className="border-t border-slate-100 pt-5">
-                <h4 className="font-bold text-slate-800 text-sm mb-1.5 flex items-center gap-1.5">
-                  🏢 Otras empresas en el Consorcio "{selectedEmpresa.grupo.trim()}"
-                </h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {consorcioEmpresas.map((emp) => (
-                    <button
-                      key={emp.id}
-                      type="button"
-                      onClick={() => onOpenEmpresa?.(emp.id!)}
-                      className="w-full text-left p-3 bg-slate-50 hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-200 rounded-xl transition-all flex items-center justify-between cursor-pointer group"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <span className="text-base group-hover:scale-110 transition-transform">🏢</span>
-                        <div>
-                          <p className="text-xs font-bold text-slate-700 group-hover:text-indigo-600 transition-colors">
-                            {emp.nombre}
-                          </p>
-                          <p className="text-[10px] text-slate-400 font-mono">
-                            {emp.ciudad || 'Sin ciudad'}, {emp.pais || 'Sin país'}
-                          </p>
-                        </div>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              {inter.fecha}
+                            </span>
+                          </div>
+                        ))}
                       </div>
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-50 text-slate-600 border border-slate-200">
-                        {emp.estado}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
+                    )}
+                  </div>
+                );
+              })()
+            )}
+          </div>
 
           {/* Notas Generales */}
           <div className="border-t border-slate-100 pt-5">
@@ -1710,8 +2014,12 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
               📝 Notas Generales del Proveedor
             </label>
             <textarea
-              value={selectedEmpresa.notas || ''}
-              onChange={(e) => handleInlineSave('notas', e.target.value)}
+              value={localNotas}
+              onChange={(e) => {
+                setLocalNotas(e.target.value);
+                if (!isCreating) handleInlineSave('notas', e.target.value);
+              }}
+              onBlur={() => !isCreating && handleBlurSave('notas', localNotas)}
               placeholder="Escribe notas adicionales, acuerdos comerciales o comentarios aquí..."
               rows={4}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium resize-none leading-relaxed text-slate-700 shadow-sm"
@@ -1725,194 +2033,179 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                 <FileText className="w-4 h-4 text-indigo-600" />
                 <span>Documentos, Certificados y Homologaciones</span>
               </h4>
-              <button
-                type="button"
-                onClick={() => setShowAddDocForm(!showAddDocForm)}
-                className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-100 transition-colors cursor-pointer"
-              >
-                {showAddDocForm ? '✕ Cancelar' : '+ Añadir Documento'}
-              </button>
+              {!isCreating && selectedEmpresa?.id && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddDocForm(!showAddDocForm)}
+                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg border border-indigo-100 transition-colors cursor-pointer"
+                >
+                  {showAddDocForm ? '✕ Cancelar' : '+ Añadir Documento'}
+                </button>
+              )}
             </div>
             <p className="text-[11px] text-slate-400 mb-3 font-normal">
               Gestiona certificados de calidad (ISO 9001/14001), pólizas de seguro, acuerdos de confidencialidad y fichas técnicas.
             </p>
 
-            {showAddDocForm && (
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-                  if (!docNombre.trim()) return;
-                  await onAddDocumento(
-                    selectedEmpresa.id!,
-                    docNombre.trim(),
-                    docUrl.trim(),
-                    docCaducidad || null
-                  );
-                  setDocNombre('');
-                  setDocCaducidad('');
-                  setDocUrl('');
-                  setShowAddDocForm(false);
-                }}
-                className="mb-4 bg-indigo-50/40 border border-indigo-100 p-4 rounded-xl space-y-3 shadow-sm"
-              >
-                <h5 className="text-[11px] font-bold text-indigo-950 uppercase tracking-wide">
-                  Registrar Nuevo Documento / Certificado
-                </h5>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                      Nombre del documento *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Ej. Certificado ISO 9001:2015, Seguro RC..."
-                      value={docNombre}
-                      onChange={(e) => setDocNombre(e.target.value)}
-                      className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                      Fecha de Caducidad (Opcional)
-                    </label>
-                    <input
-                      type="date"
-                      value={docCaducidad}
-                      onChange={(e) => setDocCaducidad(e.target.value)}
-                      className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1 px-2.5 text-xs outline-none focus:border-indigo-500"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase">
-                    URL o Enlace al Archivo (Google Drive / OneDrive / Web)
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="https://..."
-                    value={docUrl}
-                    onChange={(e) => setDocUrl(e.target.value)}
-                    className="mt-1 w-full bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs focus:border-indigo-500 outline-none"
-                  />
-                </div>
-                <div className="flex justify-end gap-2 pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowAddDocForm(false)}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg cursor-pointer shadow-sm"
-                  >
-                    Guardar Documento
-                  </button>
-                </div>
-              </form>
-            )}
-
-            {docsEmpresa.length === 0 ? (
-              <div className="text-center py-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                <p className="text-xs text-slate-400 italic">No hay documentos registrados para esta empresa.</p>
+            {isCreating ? (
+              <div className="p-6 bg-slate-50/60 rounded-xl border border-slate-200/80 text-center">
+                <p className="text-xs text-slate-500 font-medium">
+                  📄 La subida de certificados de calidad y documentos se activará inmediatamente tras guardar el proveedor.
+                </p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {docsEmpresa.map((doc) => {
-                  let diasRestantes: number | null = null;
-                  let isExpired = false;
-                  let isExpiringSoon = false;
+              <>
+                {showAddDocForm && (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault();
+                      if (!docNombre.trim() || !selectedEmpresa?.id) return;
+                      await onAddDocumento(
+                        selectedEmpresa.id,
+                        docNombre.trim(),
+                        docUrl.trim(),
+                        docCaducidad || null
+                      );
+                      setShowAddDocForm(false);
+                      setDocNombre('');
+                      setDocCaducidad('');
+                      setDocUrl('');
+                    }}
+                    className="mb-4 p-4 bg-indigo-50/40 border border-indigo-100 rounded-xl space-y-3"
+                  >
+                    <div className="flex items-center justify-between border-b border-indigo-100 pb-2">
+                      <h5 className="text-xs font-bold text-indigo-900 uppercase">
+                        Adjuntar Nuevo Documento / Certificado
+                      </h5>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddDocForm(false)}
+                        className="text-slate-400 hover:text-slate-600 text-xs cursor-pointer"
+                      >
+                        ✕
+                      </button>
+                    </div>
 
-                  if (doc.fechaCaducidad) {
-                    const fCad = new Date(doc.fechaCaducidad + 'T12:00:00');
-                    diasRestantes = Math.ceil((fCad.getTime() - new Date().getTime()) / 86400000);
-                    isExpired = diasRestantes <= 0;
-                    isExpiringSoon = diasRestantes > 0 && diasRestantes <= 30;
-                  }
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                          Nombre del Documento / Certificado *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ej. Certificado ISO 9001:2015, Seguro RC..."
+                          value={docNombre}
+                          onChange={(e) => setDocNombre(e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
 
-                  return (
-                    <div
-                      key={doc.id}
-                      className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                        isExpired
-                          ? 'bg-rose-50/50 border-rose-200'
-                          : isExpiringSoon
-                          ? 'bg-amber-50/50 border-amber-200'
-                          : 'bg-white border-slate-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                          Fecha de Caducidad / Renovación
+                        </label>
+                        <input
+                          type="date"
+                          value={docCaducidad}
+                          onChange={(e) => setDocCaducidad(e.target.value)}
+                          className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">
+                        URL o Enlace de Acceso
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="https://... o ruta en servidor"
+                        value={docUrl}
+                        onChange={(e) => setDocUrl(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs focus:outline-none focus:border-indigo-500"
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 border-t border-indigo-100">
+                      <button
+                        type="button"
+                        onClick={() => setShowAddDocForm(false)}
+                        className="px-3 py-1.5 bg-white border border-slate-200 text-slate-600 font-bold text-xs rounded-lg hover:bg-slate-50 cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                      >
+                        Guardar Documento
+                      </button>
+                    </div>
+                  </form>
+                )}
+
+                {docsEmpresa.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">
+                    No se han registrado certificados ni documentos para este proveedor.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {docsEmpresa.map((doc) => {
+                      const isExpired = doc.caducidad && new Date(doc.caducidad) < new Date();
+                      return (
                         <div
-                          className={`p-2 rounded-lg ${
-                            isExpired
-                              ? 'bg-rose-100 text-rose-700'
-                              : isExpiringSoon
-                              ? 'bg-amber-100 text-amber-700'
-                              : 'bg-indigo-50 text-indigo-700'
-                          }`}
+                          key={doc.id}
+                          className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between"
                         >
-                          <FileText className="w-4 h-4 shrink-0" />
-                        </div>
-                        <div className="min-w-0">
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg">📄</span>
+                            <div>
+                              <p className="font-semibold text-slate-800 text-xs truncate">{doc.nombre}</p>
+                              {doc.caducidad && (
+                                <p
+                                  className={`text-[10px] font-medium flex items-center gap-1 ${
+                                    isExpired ? 'text-rose-600' : 'text-slate-500'
+                                  }`}
+                                >
+                                  <Clock className="w-3 h-3" />
+                                  {isExpired ? 'Caducado:' : 'Caduca:'} {doc.caducidad}
+                                </p>
+                              )}
+                            </div>
+                          </div>
                           <div className="flex items-center gap-2">
-                            <p className="font-semibold text-slate-800 text-xs truncate">{doc.nombre}</p>
                             {doc.url && (
                               <a
-                                href={doc.url.startsWith('http') ? doc.url : `https://${doc.url}`}
+                                href={doc.url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-indigo-600 hover:text-indigo-800"
-                                title="Abrir enlace"
+                                className="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded"
+                                title="Abrir archivo"
                               >
                                 <ExternalLink className="w-3.5 h-3.5" />
                               </a>
                             )}
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5 text-[10px] text-slate-400">
-                            <span>Registrado: {new Date(doc.fecha).toLocaleDateString()}</span>
-                            {doc.fechaCaducidad && (
-                              <span
-                                className={`font-semibold px-1.5 py-0.2 rounded ${
-                                  isExpired
-                                    ? 'bg-rose-100 text-rose-700'
-                                    : isExpiringSoon
-                                    ? 'bg-amber-100 text-amber-800 font-bold'
-                                    : 'bg-slate-100 text-slate-600'
-                                }`}
-                              >
-                                {isExpired
-                                  ? 'Caducado'
-                                  : isExpiringSoon
-                                  ? `Caduca en ${diasRestantes} días`
-                                  : `Caduca: ${doc.fechaCaducidad}`}
-                              </span>
-                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                askConfirmation(
+                                  "¿Eliminar documento?",
+                                  `¿Estás seguro de que deseas eliminar el documento "${doc.nombre}"?`,
+                                  () => onDeleteDocumento(doc.id!)
+                                );
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          askConfirmation(
-                            "¿Eliminar documento?",
-                            `¿Estás seguro de que deseas eliminar el documento "${doc.nombre}"?`,
-                            () => onDeleteDocumento(doc.id!),
-                            true,
-                            "Eliminar"
-                          );
-                        }}
-                        className="text-slate-400 hover:text-rose-600 p-1 rounded-lg transition-colors cursor-pointer"
-                        title="Eliminar documento"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
@@ -2004,7 +2297,9 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
               <div className="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
                 <span>📅</span>
-                {selectedEmpresa.evaluacion?.ultimaActualizacion ? (
+                {isCreating ? (
+                  <span>Evaluación inicial que se guardará conjuntamente con el nuevo proveedor.</span>
+                ) : selectedEmpresa?.evaluacion?.ultimaActualizacion ? (
                   <span>
                     Última evaluación:{' '}
                     <strong className="text-slate-700">
@@ -2021,35 +2316,37 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                     <Check className="w-4 h-4" /> ¡Guardado con éxito!
                   </span>
                 )}
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setIsSavingEval(true);
-                    const updated = {
-                      ...selectedEmpresa,
-                      evaluacion: {
-                        plazos: evalPlazos,
-                        calidad: evalCalidad,
-                        flexibilidad: evalFlexibilidad,
-                        comentarios: evalComentarios,
-                        ultimaActualizacion: new Date().toISOString(),
-                      },
-                    };
-                    await onUpdateEmpresa(updated);
-                    setIsSavingEval(false);
-                    setEvalSaveSuccess(true);
-                    setTimeout(() => setEvalSaveSuccess(false), 4000);
-                  }}
-                  disabled={isSavingEval || evalPlazos === 0 || evalCalidad === 0 || evalFlexibilidad === 0}
-                  className={`px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm ${
-                    evalPlazos === 0 || evalCalidad === 0 || evalFlexibilidad === 0
-                      ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
-                      : 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer hover:shadow'
-                  }`}
-                >
-                  <Save className="w-4 h-4" />
-                  {isSavingEval ? 'Guardando...' : 'Guardar Evaluación de KPIs'}
-                </button>
+                {!isCreating && selectedEmpresa?.id && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setIsSavingEval(true);
+                      const updated = {
+                        ...selectedEmpresa,
+                        evaluacion: {
+                          plazos: evalPlazos,
+                          calidad: evalCalidad,
+                          flexibilidad: evalFlexibilidad,
+                          comentarios: evalComentarios,
+                          ultimaActualizacion: new Date().toISOString(),
+                        },
+                      };
+                      await onUpdateEmpresa(updated);
+                      setIsSavingEval(false);
+                      setEvalSaveSuccess(true);
+                      setTimeout(() => setEvalSaveSuccess(false), 4000);
+                    }}
+                    disabled={isSavingEval || evalPlazos === 0 || evalCalidad === 0 || evalFlexibilidad === 0}
+                    className={`px-4 py-2 rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm ${
+                      evalPlazos === 0 || evalCalidad === 0 || evalFlexibilidad === 0
+                        ? 'bg-slate-200 text-slate-400 border border-slate-300 cursor-not-allowed'
+                        : 'bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer hover:shadow'
+                    }`}
+                  >
+                    <Save className="w-4 h-4" />
+                    {isSavingEval ? 'Guardando...' : 'Guardar Evaluación de KPIs'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -2065,7 +2362,8 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
                 onChange={async (e) => {
                   const nuevoEstado = e.target.value as any;
                   setEstadoSeleccionado(nuevoEstado);
-                  await handleInlineSave('estado', nuevoEstado);
+                  setLocalEstado(nuevoEstado);
+                  if (!isCreating) await handleInlineSave('estado', nuevoEstado);
                 }}
                 className="w-full bg-white border border-slate-200 rounded-lg py-2.5 px-3 text-sm focus:border-indigo-500 outline-none font-semibold text-slate-700 transition-all shadow-sm cursor-pointer"
               >
@@ -2085,13 +2383,46 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-6 bg-slate-50 border-t border-slate-100 text-right">
-          <button
-            onClick={onClose}
-            className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors shadow-sm text-sm cursor-pointer"
-          >
-            Cerrar
-          </button>
+        <div className="p-4 sm:p-5 bg-slate-50 border-t border-slate-200 flex items-center justify-between gap-3">
+          {isCreating ? (
+            <>
+              <div className="text-xs text-slate-500 font-medium hidden sm:block">
+                Todos los datos se guardarán conjuntamente en el nuevo proveedor.
+              </div>
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer shadow-2xs"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveNewEmpresa}
+                  disabled={isSavingNew || !localNombre.trim() || !!duplicateEmpresa}
+                  title={duplicateEmpresa ? 'Ya existe una empresa registrada con estos datos' : undefined}
+                  className={`px-5 py-2 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shadow-sm ${
+                    isSavingNew || !localNombre.trim() || !!duplicateEmpresa
+                      ? 'bg-slate-300 cursor-not-allowed opacity-75'
+                      : 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer shadow-md'
+                  }`}
+                >
+                  <Plus className="w-4 h-4" />
+                  {isSavingNew ? 'Guardando...' : duplicateEmpresa ? 'Empresa Duplicada' : 'Guardar Proveedor'}
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex justify-end w-full">
+              <button
+                onClick={onClose}
+                className="px-5 py-2 bg-white border border-slate-200 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors shadow-2xs text-xs cursor-pointer"
+              >
+                Cerrar
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

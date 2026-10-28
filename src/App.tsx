@@ -118,51 +118,12 @@ export default function App() {
   };
 
   // Creation Modals
-  const [showAddCompanyModal, setShowAddCompanyModal] = useState(false);
+  const [isCreatingEmpresa, setIsCreatingEmpresa] = useState(false);
+  const [creatingEmpresaInitial, setCreatingEmpresaInitial] = useState<Empresa | null>(null);
   const [isCreatingContacto, setIsCreatingContacto] = useState(false);
   const [creatingContactoInitial, setCreatingContactoInitial] = useState<Contacto | null>(null);
   const [showAddInteractionModal, setShowAddInteractionModal] = useState(false);
   const [showAddRelacionModal, setShowAddRelacionModal] = useState(false);
-
-  // Creation Forms State
-  const [newCompany, setNewCompany] = useState<Partial<Empresa>>({
-    nombre: '', tipo: 'fabricante', estado: 'prospecto', nit: '', direccion: '', cp: '', ciudad: '', provincia: '', pais: 'España', telefono: '', email: '', web: '', unspscCodes: []
-  });
-  const [addCompanyError, setAddCompanyError] = useState<string | null>(null);
-
-  const [newCompanyUnspscSearch, setNewCompanyUnspscSearch] = useState('');
-  const [newCompanyUnspscResults, setNewCompanyUnspscResults] = useState<UnspscCode[]>([]);
-  const [isSearchingNewCompanyUnspsc, setIsSearchingNewCompanyUnspsc] = useState(false);
-
-  useEffect(() => {
-    if (!newCompanyUnspscSearch.trim()) {
-      setNewCompanyUnspscResults([]);
-      return;
-    }
-
-    const delayDebounce = setTimeout(async () => {
-      setIsSearchingNewCompanyUnspsc(true);
-      try {
-        const response = await fetch("/api/unspsc/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query: newCompanyUnspscSearch })
-        });
-        if (response.ok) {
-          const data = await response.json();
-          if (data && Array.isArray(data.codes)) {
-            setNewCompanyUnspscResults(data.codes);
-          }
-        }
-      } catch (err) {
-        console.error("Error searching UNSPSC for new company:", err);
-      } finally {
-        setIsSearchingNewCompanyUnspsc(false);
-      }
-    }, 400);
-
-    return () => clearTimeout(delayDebounce);
-  }, [newCompanyUnspscSearch]);
 
   const [mainUnspscSearch, setMainUnspscSearch] = useState('');
   const [mainUnspscResults, setMainUnspscResults] = useState<UnspscCode[]>([]);
@@ -598,48 +559,42 @@ export default function App() {
     };
   }, [globalSearch, empresas, contactos, interacciones]);
 
-  // Duplicate Company check
-  const duplicateEmpresa = useMemo(() => {
-    const rawName = (newCompany.nombre || '').trim().toLowerCase();
-    const rawNit = (newCompany.nit || '').replace(/[\s\-\.]/g, '').toLowerCase();
+  // Company Creation Handler with Full Modal
+  const handleOpenCreateEmpresa = () => {
+    setIsCreatingEmpresa(true);
+    setSelectedEmpId(null);
+    setCreatingEmpresaInitial({
+      id: '',
+      nombre: '',
+      tipo: 'fabricante',
+      estado: 'prospecto',
+      nit: '',
+      direccion: '',
+      cp: '',
+      ciudad: '',
+      provincia: '',
+      pais: 'España',
+      telefono: '',
+      email: '',
+      web: '',
+      grupo: '',
+      notas: '',
+      tags: [],
+      esTambien: [],
+      unspscCodes: [],
+      fecha_creacion: new Date().toISOString(),
+    });
+  };
 
-    if (!rawName && !rawNit) return null;
-
-    const normalizeCompanyName = (str: string) => {
-      return str
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/\b(s\.?l\.?u?|s\.?a\.?u?|sociedad limitada|sociedad anonima)\b/gi, '')
-        .replace(/[^\w\s]/gi, '')
-        .trim();
-    };
-
-    const normInput = normalizeCompanyName(rawName);
-
-    return empresas.find(e => {
-      // 1. Check CIF / NIT
-      if (rawNit && rawNit.length >= 5 && e.nit) {
-        const existNit = e.nit.replace(/[\s\-\.]/g, '').toLowerCase();
-        if (existNit && existNit === rawNit) {
-          return true;
-        }
-      }
-
-      // 2. Check Name exact or normalized
-      if (rawName.length >= 2) {
-        const existRaw = (e.nombre || '').trim().toLowerCase();
-        if (existRaw === rawName) return true;
-
-        if (normInput.length >= 3) {
-          const normExist = normalizeCompanyName(e.nombre || '');
-          if (normExist === normInput) return true;
-        }
-      }
-
-      return false;
-    }) || null;
-  }, [newCompany.nombre, newCompany.nit, empresas]);
+  const handleCreateEmpresa = async (empresaData: Omit<Empresa, 'id'>) => {
+    const newId = await saveDocument('empresas', empresaData);
+    setIsCreatingEmpresa(false);
+    setCreatingEmpresaInitial(null);
+    if (newId) {
+      handleOpenEmpresa(newId);
+    }
+    return newId;
+  };
 
   // Contact Creation Handler with Full Modal
   const handleOpenCreateContacto = (empresaId?: string) => {
@@ -674,29 +629,6 @@ export default function App() {
       handleOpenContacto(newId);
     }
     return newId;
-  };
-
-  // Add Company Submit
-  const handleAddCompanySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCompany.nombre) return;
-
-    if (duplicateEmpresa) {
-      setAddCompanyError(`Ya existe una empresa registrada con estos datos: "${duplicateEmpresa.nombre}". Revisa la empresa existente antes de crear un duplicado.`);
-      return;
-    }
-
-    await saveDocument('empresas', { 
-      ...newCompany, 
-      tags: [], 
-      esTambien: [],
-      unspscCodes: newCompany.unspscCodes || [] 
-    });
-    setShowAddCompanyModal(false);
-    setAddCompanyError(null);
-    setNewCompany({
-      nombre: '', tipo: 'fabricante', estado: 'prospecto', nit: '', direccion: '', cp: '', ciudad: '', provincia: '', pais: 'España', telefono: '', email: '', web: '', unspscCodes: []
-    });
   };
 
   // Add Interaction Submit
@@ -985,7 +917,7 @@ export default function App() {
               <div className="flex items-center gap-2.5 w-full sm:w-auto">
                 <button 
                   onClick={() => {
-                    if (currentTab === 'empresas') setShowAddCompanyModal(true);
+                    if (currentTab === 'empresas') handleOpenCreateEmpresa();
                     if (currentTab === 'contactos') handleOpenCreateContacto();
                     if (currentTab === 'interacciones') setShowAddInteractionModal(true);
                   }}
@@ -1618,14 +1550,42 @@ export default function App() {
 
       {/* Detail Overlay Modules */}
       <FichasModales 
-        selectedEmpresa={empresas.find(e => e.id === selectedEmpId) || null}
+        selectedEmpresa={
+          isCreatingEmpresa
+            ? (creatingEmpresaInitial as Empresa || {
+                id: '',
+                nombre: '',
+                tipo: 'fabricante',
+                estado: 'prospecto',
+                nit: '',
+                direccion: '',
+                cp: '',
+                ciudad: '',
+                provincia: '',
+                pais: 'España',
+                telefono: '',
+                email: '',
+                web: '',
+                grupo: '',
+                notas: '',
+                tags: [],
+                esTambien: [],
+                unspscCodes: [],
+                fecha_creacion: '',
+              })
+            : (empresas.find(e => e.id === selectedEmpId) || null)
+        }
         selectedContacto={
           isCreatingContacto 
             ? (creatingContactoInitial || { id: '', nombre: '', empresaId: '', cargo: '', reportaA: null, telefono: '', email: '', linkedin: '', foto: '', notas: '', estado: 'activo', motivoInactivo: '', empresaConocido: [], empresasAnteriores: [], intereses: [], empresaIds: [], fecha_creacion: '' })
             : (contactos.find(c => c.id === selectedContId) || null)
         }
         selectedInteraccion={interacciones.find(i => i.id === selectedInterId) || null}
-        onCloseEmpresa={() => setSelectedEmpId(null)}
+        onCloseEmpresa={() => {
+          setSelectedEmpId(null);
+          setIsCreatingEmpresa(false);
+          setCreatingEmpresaInitial(null);
+        }}
         onCloseContacto={() => {
           setSelectedContactoId(null);
           setIsCreatingContacto(false);
@@ -1635,6 +1595,9 @@ export default function App() {
         onOpenContacto={(id) => handleOpenContacto(id)}
         onOpenInteraccion={(id) => handleOpenInteraccion(id)}
         onOpenEmpresa={(id) => handleOpenEmpresa(id)}
+        isCreatingEmpresa={isCreatingEmpresa}
+        onCreateEmpresa={handleCreateEmpresa}
+        onOpenCreateEmpresa={handleOpenCreateEmpresa}
         isCreatingContacto={isCreatingContacto}
         onCreateContacto={handleCreateContacto}
         onOpenCreateContacto={handleOpenCreateContacto}
@@ -2105,272 +2068,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Modales de Creación */}
-      {showAddCompanyModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col border border-slate-100">
-            <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
-              <h3 className="font-bold text-lg text-slate-100">Crear Nuevo Proveedor</h3>
-              <button onClick={() => setShowAddCompanyModal(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleAddCompanySubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-              {/* Duplicate Company Alert */}
-              {duplicateEmpresa && (
-                <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2.5 shadow-2xs">
-                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                  <div className="flex-1">
-                    <p className="font-bold text-amber-950">
-                      ⚠️ Esta empresa ya está registrada en el sistema
-                    </p>
-                    <p className="mt-1 text-amber-800 leading-relaxed">
-                      Se ha detectado una coincidencia con <strong>"{duplicateEmpresa.nombre}"</strong>
-                      {duplicateEmpresa.nit ? ` (CIF/NIT: ${duplicateEmpresa.nit})` : ''} 
-                      {duplicateEmpresa.ciudad ? ` en ${duplicateEmpresa.ciudad}` : ''} • Estado: {duplicateEmpresa.estado}.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowAddCompanyModal(false);
-                        setAddCompanyError(null);
-                        handleOpenEmpresa(duplicateEmpresa.id!);
-                      }}
-                      className="mt-2 inline-flex items-center gap-1 font-bold text-indigo-700 hover:text-indigo-900 underline cursor-pointer"
-                    >
-                      Abrir ficha de la empresa existente →
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {addCompanyError && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-                  <span>{addCompanyError}</span>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase">Nombre del Proveedor *</label>
-                <input 
-                  type="text" required
-                  value={newCompany.nombre}
-                  onChange={(e) => {
-                    setAddCompanyError(null);
-                    setNewCompany({...newCompany, nombre: e.target.value});
-                  }}
-                  className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Tipo</label>
-                  <select 
-                    value={newCompany.tipo}
-                    onChange={(e) => setNewCompany({...newCompany, tipo: e.target.value as any})}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="fabricante">🏭 Fabricante</option>
-                    <option value="distribuidor">🚚 Distribuidor</option>
-                    <option value="servicios">🛠️ Servicios</option>
-                    <option value="otros">📦 Otros</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Estado de Homologación</label>
-                  <select 
-                    value={newCompany.estado}
-                    onChange={(e) => setNewCompany({...newCompany, estado: e.target.value as any})}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500 font-medium text-slate-700"
-                  >
-                    <option value="prospecto">🔵 Prospecto</option>
-                    <option value="en_proceso">⏳ En proceso</option>
-                    <option value="homologado">✅ Homologado</option>
-                    <option value="en_cuarentena">⚠️ En cuarentena</option>
-                    <option value="no_apto">🚫 No apto</option>
-                    <option value="inactivo">⚫ Inactivo</option>
-                  </select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase">NIT / CIF</label>
-                  <input 
-                    type="text" 
-                    value={newCompany.nit}
-                    onChange={(e) => setNewCompany({...newCompany, nit: e.target.value})}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Teléfono</label>
-                  <input 
-                    type="text" 
-                    value={newCompany.telefono}
-                    onChange={(e) => setNewCompany({...newCompany, telefono: e.target.value})}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase">Dirección Completa</label>
-                <input 
-                  type="text" 
-                  value={newCompany.direccion}
-                  onChange={(e) => setNewCompany({...newCompany, direccion: e.target.value})}
-                  className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm"
-                />
-              </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Ciudad</label>
-                  <input 
-                    type="text" 
-                    value={newCompany.ciudad}
-                    onChange={(e) => setNewCompany({...newCompany, ciudad: e.target.value})}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Provincia</label>
-                  <input 
-                    type="text" 
-                    value={newCompany.provincia}
-                    onChange={(e) => setNewCompany({...newCompany, provincia: e.target.value})}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase">País</label>
-                  <input 
-                    type="text" 
-                    value={newCompany.pais}
-                    onChange={(e) => setNewCompany({...newCompany, pais: e.target.value})}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Clasificación UNSPSC</label>
-                
-                {/* Selected UNSPSC Codes inside newCompany */}
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {(newCompany.unspscCodes || []).length === 0 ? (
-                    <span className="text-[11px] text-slate-400 italic">No se han asignado códigos UNSPSC.</span>
-                  ) : (
-                    (newCompany.unspscCodes || []).map((item) => (
-                      <span
-                        key={item.code}
-                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 border border-indigo-150 text-indigo-700 text-[11px] font-bold"
-                      >
-                        <span className="font-mono text-[9px] bg-indigo-100 text-indigo-800 px-1 rounded">{item.code}</span>
-                        <span className="max-w-[120px] truncate">{item.name}</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = (newCompany.unspscCodes || []).filter(u => u.code !== item.code);
-                            setNewCompany({ ...newCompany, unspscCodes: updated });
-                          }}
-                          className="hover:bg-indigo-150 rounded text-indigo-500 hover:text-rose-600 transition-colors ml-1 cursor-pointer font-bold"
-                        >
-                          ✕
-                        </button>
-                      </span>
-                    ))
-                  )}
-                </div>
-
-                {/* Autocomplete Input Search */}
-                <div className="relative">
-                  <div className="relative">
-                    <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Buscar por código o descripción en catálogo completo..."
-                      value={newCompanyUnspscSearch}
-                      onChange={(e) => setNewCompanyUnspscSearch(e.target.value)}
-                      className="pl-8 w-full bg-slate-50 border border-slate-200 rounded-lg py-1.5 px-2.5 text-xs focus:outline-none focus:border-indigo-500 focus:bg-white"
-                    />
-                    {newCompanyUnspscSearch && (
-                      <button
-                        type="button"
-                        onClick={() => setNewCompanyUnspscSearch('')}
-                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 text-xs"
-                      >
-                        ✕
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Dropdown containing results */}
-                  {newCompanyUnspscSearch && (
-                    <div className="absolute z-50 mt-1 w-full max-h-48 bg-white border border-slate-200 rounded-lg shadow-lg overflow-y-auto divide-y divide-slate-100">
-                      {isSearchingNewCompanyUnspsc && (
-                        <div className="p-2 text-xs text-slate-500 text-center flex items-center justify-center gap-1.5 bg-slate-50/50">
-                          <span className="w-3 h-3 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></span>
-                          <span>Buscando...</span>
-                        </div>
-                      )}
-                      {!isSearchingNewCompanyUnspsc && newCompanyUnspscResults.length === 0 ? (
-                        <div className="p-2 text-[11px] text-slate-400 text-center">
-                          No se encontraron coincidencias.
-                        </div>
-                      ) : (
-                        (!isSearchingNewCompanyUnspsc ? newCompanyUnspscResults : []).slice(0, 15).map((item) => {
-                          const isSelected = (newCompany.unspscCodes || []).some(u => u.code === item.code);
-                          return (
-                            <button
-                              key={item.code}
-                              type="button"
-                              onClick={() => {
-                                const current = newCompany.unspscCodes || [];
-                                const updated = isSelected
-                                  ? current.filter(u => u.code !== item.code)
-                                  : [...current, item];
-                                setNewCompany({ ...newCompany, unspscCodes: updated });
-                                setNewCompanyUnspscSearch('');
-                              }}
-                              className="w-full text-left px-3 py-1.5 hover:bg-slate-50 transition-colors flex items-center justify-between text-xs cursor-pointer"
-                            >
-                              <span className="truncate pr-2 flex items-center">
-                                <span className="font-mono text-[9px] font-bold bg-slate-100 text-slate-600 px-1 py-0.5 rounded mr-1.5 border border-slate-200 shrink-0">{item.code}</span>
-                                <span className="text-slate-700 truncate font-medium">{item.name}</span>
-                              </span>
-                              {isSelected ? (
-                                <span className="text-emerald-600 font-bold text-[10px] shrink-0">✓ Seleccionado</span>
-                              ) : (
-                                <span className="text-indigo-600 text-[10px] font-bold shrink-0">+ Añadir</span>
-                              )}
-                            </button>
-                          );
-                        })
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <button type="button" onClick={() => setShowAddCompanyModal(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer">
-                  Cancelar
-                </button>
-                <button 
-                  type="submit" 
-                  disabled={!!duplicateEmpresa}
-                  title={duplicateEmpresa ? 'Ya existe una empresa registrada con este nombre o CIF' : undefined}
-                  className={`px-4 py-2 text-white text-xs font-bold rounded-lg transition-all ${
-                    duplicateEmpresa 
-                      ? 'bg-slate-300 cursor-not-allowed opacity-75' 
-                      : 'bg-indigo-600 hover:bg-indigo-700 cursor-pointer shadow-xs'
-                  }`}
-                >
-                  {duplicateEmpresa ? 'Empresa ya existente' : 'Crear Proveedor'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Add Interaction Modal */}
       {showAddInteractionModal && (
