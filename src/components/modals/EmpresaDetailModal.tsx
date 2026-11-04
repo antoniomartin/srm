@@ -564,15 +564,17 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
         notas: localNotas.trim(),
         tags: localTags,
         unspscCodes: localUnspscCodes,
-        evaluacion: isEvalFilled
+        ...(isEvalFilled
           ? {
-              plazos: evalPlazos,
-              calidad: evalCalidad,
-              flexibilidad: evalFlexibilidad,
-              comentarios: evalComentarios.trim(),
-              ultimaActualizacion: new Date().toISOString(),
+              evaluacion: {
+                plazos: evalPlazos,
+                calidad: evalCalidad,
+                flexibilidad: evalFlexibilidad,
+                comentarios: evalComentarios.trim(),
+                ultimaActualizacion: new Date().toISOString(),
+              },
             }
-          : undefined,
+          : {}),
         fecha_creacion: new Date().toISOString(),
       };
 

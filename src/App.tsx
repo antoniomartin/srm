@@ -12,7 +12,7 @@ import {
 
 // Firebase core
 import { 
-  auth, db, getUserCollectionPath, testConnection, handleFirestoreError, OperationType 
+  auth, db, getUserCollectionPath, testConnection, handleFirestoreError, OperationType, sanitizeForFirestore 
 } from './firebase';
 import { 
   onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut 
@@ -284,11 +284,16 @@ export default function App() {
     setSyncing(true);
     const path = getUserCollectionPath(col);
     try {
+      const sanitizedData = sanitizeForFirestore(data);
       if (id) {
-        await setDoc(doc(db, path, id), data, { merge: true });
+        await setDoc(doc(db, path, id), sanitizedData, { merge: true });
         return id;
       } else {
-        const docRef = await addDoc(collection(db, path), { ...data, fecha_creacion: new Date().toISOString() });
+        const payload = sanitizeForFirestore({
+          ...sanitizedData,
+          fecha_creacion: sanitizedData?.fecha_creacion || new Date().toISOString()
+        });
+        const docRef = await addDoc(collection(db, path), payload);
         return docRef.id;
       }
     } catch (err) {
@@ -767,7 +772,7 @@ export default function App() {
             tags: [...new Set([...(existing.tags || []), ...(empRow.tags || [])])],
             esTambien: [...new Set([...(existing.esTambien || []), ...(empRow.esTambien || [])])],
             unspscCodes: empRow.unspscCodes?.length ? empRow.unspscCodes : existing.unspscCodes,
-            evaluacion: empRow.evaluacion || existing.evaluacion,
+            ...(empRow.evaluacion || existing.evaluacion ? { evaluacion: empRow.evaluacion || existing.evaluacion } : {}),
           };
 
           await saveDocument('empresas', updatedData, existing.id);
@@ -793,7 +798,7 @@ export default function App() {
             tags: empRow.tags || [],
             esTambien: empRow.esTambien || [],
             unspscCodes: empRow.unspscCodes || [],
-            evaluacion: empRow.evaluacion,
+            ...(empRow.evaluacion ? { evaluacion: empRow.evaluacion } : {}),
             fecha_creacion: empRow.fecha_creacion || new Date().toISOString(),
           };
 
