@@ -700,8 +700,8 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
             tags,
             esTambien,
             notas,
-            unspscCodes: unspscCodes.length > 0 ? unspscCodes : undefined,
-            evaluacion,
+            unspscCodes: unspscCodes.length > 0 ? unspscCodes : [],
+            ...(evaluacion ? { evaluacion } : {}),
             fecha_creacion,
           });
         }
