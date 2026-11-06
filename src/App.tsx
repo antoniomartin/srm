@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Building2, Users, MessageSquare, Settings, Search, Calendar, AlertTriangle, AlertCircle,
   LogOut, Plus, Upload, Download, RefreshCw, CheckCircle2, ChevronRight, X, Sparkles, Filter,
-  LayoutGrid, List, Clock, CheckSquare, FileText, Check, ExternalLink, Paperclip, MapPin
+  LayoutGrid, List, Clock, CheckSquare, FileText, Check, ExternalLink, Paperclip, MapPin, Trash2
 } from 'lucide-react';
 
 // Firebase core
@@ -35,6 +35,7 @@ import { SearchSelect } from './components/SearchSelect';
 import { PinLocationMapModal } from './components/PinLocationMapModal';
 import { TagManager } from './components/TagManager';
 import { Logo } from './components/Logo';
+import { WipeDatabaseModal } from './components/modals/WipeDatabaseModal';
 
 // Utilities
 import { exportToExcel, parseExcelFile, downloadExcelTemplate } from './utils/excel';
@@ -199,6 +200,7 @@ export default function App() {
   } | null>(null);
   const [exportNotice, setExportNotice] = useState<{ message: string; isError?: boolean } | null>(null);
   const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
+  const [showWipeModal, setShowWipeModal] = useState(false);
 
   // 1. Auth Listener & test connection
   useEffect(() => {
@@ -312,6 +314,83 @@ export default function App() {
       await deleteDoc(doc(db, path, id));
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, path);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  // Complete Database Wipe (with triple validation)
+  const handleWipeDatabase = async (onProgress: (msg: string) => void) => {
+    setSyncing(true);
+    try {
+      const total = empresas.length + contactos.length + interacciones.length + relaciones.length + documentos.length;
+      let count = 0;
+
+      // 1. Delete all empresas
+      for (const e of empresas) {
+        if (e.id) {
+          const path = getUserCollectionPath('empresas');
+          await deleteDoc(doc(db, path, e.id));
+          count++;
+          onProgress(`Borrando proveedores (${count}/${total})...`);
+        }
+      }
+
+      // 2. Delete all contactos
+      for (const c of contactos) {
+        if (c.id) {
+          const path = getUserCollectionPath('contactos');
+          await deleteDoc(doc(db, path, c.id));
+          count++;
+          onProgress(`Borrando contactos (${count}/${total})...`);
+        }
+      }
+
+      // 3. Delete all interacciones
+      for (const i of interacciones) {
+        if (i.id) {
+          const path = getUserCollectionPath('interacciones');
+          await deleteDoc(doc(db, path, i.id));
+          count++;
+          onProgress(`Borrando interacciones (${count}/${total})...`);
+        }
+      }
+
+      // 4. Delete all relaciones
+      for (const r of relaciones) {
+        if (r.id) {
+          const path = getUserCollectionPath('relaciones');
+          await deleteDoc(doc(db, path, r.id));
+          count++;
+          onProgress(`Borrando relaciones (${count}/${total})...`);
+        }
+      }
+
+      // 5. Delete all documentos
+      for (const d of documentos) {
+        if (d.id) {
+          const path = getUserCollectionPath('documentos');
+          await deleteDoc(doc(db, path, d.id));
+          count++;
+          onProgress(`Borrando documentos (${count}/${total})...`);
+        }
+      }
+
+      // Reset state in memory
+      setEmpresas([]);
+      setContactos([]);
+      setInteracciones([]);
+      setRelaciones([]);
+      setDocumentos([]);
+
+      setExportNotice({
+        message: '🗑️ Base de datos eliminada por completo. Tu SRM ha sido restablecido a cero.'
+      });
+      setTimeout(() => setExportNotice(null), 6000);
+    } catch (err: any) {
+      console.error('Error al vaciar la base de datos:', err);
+      handleFirestoreError(err, OperationType.DELETE, null);
+      throw err;
     } finally {
       setSyncing(false);
     }
@@ -2073,6 +2152,38 @@ export default function App() {
                     </div>
                   </div>
                 </div>
+
+                {/* Danger Zone: Wipe Database */}
+                <div className="bg-rose-50/40 border-2 border-rose-200/80 rounded-2xl p-6 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-start gap-3.5">
+                      <div className="p-3 bg-rose-100 border border-rose-200 text-rose-700 rounded-2xl shrink-0 mt-0.5">
+                        <Trash2 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-200">
+                            Zona Crítica
+                          </span>
+                        </div>
+                        <h4 className="font-black text-rose-950 text-base mt-1">
+                          Restablecer y Borrar Base de Datos Completa
+                        </h4>
+                        <p className="text-slate-600 text-xs mt-1 max-w-2xl leading-relaxed">
+                          Elimina de manera permanente todos los proveedores ({empresas.length}), contactos ({contactos.length}), interacciones ({interacciones.length}), relaciones ({relaciones.length}) y documentos ({documentos.length}) guardados en tu cuenta. Esta operación está protegida por un sistema de <strong>triple validación de seguridad</strong> para prevenir borrados accidentales.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowWipeModal(true)}
+                      className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-98 text-white font-bold text-xs rounded-xl shadow-md shadow-rose-900/10 hover:shadow-lg transition-all flex items-center gap-2 shrink-0 cursor-pointer self-start sm:self-center"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      <span>Borrar Base de Datos...</span>
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -2791,6 +2902,22 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Wipe Database Modal with Triple Validation */}
+      <WipeDatabaseModal
+        isOpen={showWipeModal}
+        onClose={() => setShowWipeModal(false)}
+        userEmail={user?.email}
+        counts={{
+          empresas: empresas.length,
+          contactos: contactos.length,
+          interacciones: interacciones.length,
+          relaciones: relaciones.length,
+          documentos: documentos.length,
+        }}
+        onExportExcel={handleExportExcel}
+        onConfirmWipe={handleWipeDatabase}
+      />
 
       {/* Toast Notice for Export */}
       {exportNotice && (
