@@ -198,6 +198,7 @@ export default function App() {
     isSuccess?: boolean;
   } | null>(null);
   const [exportNotice, setExportNotice] = useState<{ message: string; isError?: boolean } | null>(null);
+  const [isCleaningDuplicates, setIsCleaningDuplicates] = useState(false);
 
   // 1. Auth Listener & test connection
   useEffect(() => {
@@ -387,6 +388,97 @@ export default function App() {
       .filter(e => (e.estado === 'homologado' || e.estado === 'validado') && scores[e.id!]?.nivel === 'rojo')
       .map(e => ({ emp: e, dias: scores[e.id!]?.dias }));
   }, [empresas, scores]);
+
+  // Duplicate interactions detector for existing data
+  const duplicateInteraccionesIds = useMemo(() => {
+    const toDelete = new Set<string>();
+
+    for (let i = 0; i < interacciones.length; i++) {
+      const a = interacciones[i];
+      if (!a.id || toDelete.has(a.id)) continue;
+
+      const aAsunto = (a.asunto || '').trim().toLowerCase();
+      const aFecha = (a.fecha || '').trim();
+      const aEmpIds = (a.empresaIds || []).filter(Boolean);
+      const aContIds = (a.contactoIds?.length ? a.contactoIds : (a.contactoId ? [a.contactoId] : [])).filter(Boolean);
+
+      for (let j = i + 1; j < interacciones.length; j++) {
+        const b = interacciones[j];
+        if (!b.id || toDelete.has(b.id)) continue;
+
+        const bAsunto = (b.asunto || '').trim().toLowerCase();
+        const bFecha = (b.fecha || '').trim();
+
+        if (aAsunto !== bAsunto || aFecha !== bFecha) continue;
+
+        const bEmpIds = (b.empresaIds || []).filter(Boolean);
+        const bContIds = (b.contactoIds?.length ? b.contactoIds : (b.contactoId ? [b.contactoId] : [])).filter(Boolean);
+
+        const hasEmpFilter = aEmpIds.length > 0 && bEmpIds.length > 0;
+        const empOverlap = hasEmpFilter && aEmpIds.some(id => bEmpIds.includes(id));
+
+        const hasContFilter = aContIds.length > 0 && bContIds.length > 0;
+        const contOverlap = hasContFilter && aContIds.some(id => bContIds.includes(id));
+
+        if (hasEmpFilter && !empOverlap && !hasContFilter) continue;
+        if (hasContFilter && !contOverlap && !hasEmpFilter) continue;
+        if (hasEmpFilter && hasContFilter && !empOverlap && !contOverlap) continue;
+
+        let isMatch = false;
+        if (empOverlap || contOverlap) {
+          isMatch = true;
+        } else if (a.tipo === b.tipo) {
+          isMatch = true;
+        } else if ((a.descripcion || '').trim().toLowerCase() === (b.descripcion || '').trim().toLowerCase()) {
+          isMatch = true;
+        }
+
+        if (isMatch) {
+          // Compare content richness: keep the one with more information
+          const aScore = (a.descripcion?.length || 0) + (a.resolucion?.length || 0) + (a.pasos?.length || 0) * 10;
+          const bScore = (b.descripcion?.length || 0) + (b.resolucion?.length || 0) + (b.pasos?.length || 0) * 10;
+          if (bScore > aScore) {
+            toDelete.add(a.id);
+            break;
+          } else {
+            toDelete.add(b.id);
+          }
+        }
+      }
+    }
+
+    return Array.from(toDelete);
+  }, [interacciones]);
+
+  const handleCleanDuplicateInteracciones = async () => {
+    if (duplicateInteraccionesIds.length === 0) return;
+    const confirmClean = window.confirm(
+      `¿Deseas eliminar las ${duplicateInteraccionesIds.length} interacciones duplicadas detectadas? Se conservará la versión con más información de cada una.`
+    );
+    if (!confirmClean) return;
+
+    setIsCleaningDuplicates(true);
+    let eliminadas = 0;
+    try {
+      for (const id of duplicateInteraccionesIds) {
+        await deleteDocument('interacciones', id);
+        eliminadas++;
+      }
+      setExportNotice({
+        message: `✅ Se han eliminado ${eliminadas} interacciones duplicadas correctamente.`
+      });
+      setTimeout(() => setExportNotice(null), 5000);
+    } catch (err: any) {
+      console.error('Error al limpiar duplicados:', err);
+      setExportNotice({
+        message: `❌ Error al limpiar duplicados: ${err.message || 'Ocurrió un error'}`,
+        isError: true
+      });
+      setTimeout(() => setExportNotice(null), 6000);
+    } finally {
+      setIsCleaningDuplicates(false);
+    }
+  };
 
   // Main Lists Filter & Sort
   const filteredEmpresas = useMemo(() => {
@@ -722,6 +814,7 @@ export default function App() {
       let contactosCreados = 0;
       let contactosActualizados = 0;
       let interaccionesCreadas = 0;
+      let interaccionesActualizadas = 0;
       let relacionesCreadas = 0;
 
       // Fast lookup map for matching companies to IDs
@@ -811,6 +904,13 @@ export default function App() {
       }
 
       // 2. Process Contactos
+      const contactNameToIdMap = new Map<string, string>();
+      contactos.forEach(c => {
+        if (c.nombre && c.id) {
+          contactNameToIdMap.set(c.nombre.trim().toLowerCase(), c.id);
+        }
+      });
+
       for (const contRow of parsed.contactos) {
         step++;
         setImportProgress({
@@ -849,6 +949,7 @@ export default function App() {
             empresaConocido: [...new Set([...(existingContact.empresaConocido || []), ...(contRow.dondeSeConocio || [])])],
           };
           await saveDocument('contactos', updatedContact, existingContact.id);
+          contactNameToIdMap.set(cleanContNombre.toLowerCase(), existingContact.id);
           contactosActualizados++;
         } else {
           const newContact: Omit<Contacto, 'id'> = {
@@ -867,12 +968,17 @@ export default function App() {
             notas: contRow.notas || '',
             fecha_creacion: new Date().toISOString(),
           };
-          await saveDocument('contactos', newContact);
-          contactosCreados++;
+          const newContId = await saveDocument('contactos', newContact);
+          if (newContId) {
+            contactNameToIdMap.set(cleanContNombre.toLowerCase(), newContId);
+            contactosCreados++;
+          }
         }
       }
 
       // 3. Process Interacciones
+      const localInteracciones: Interaccion[] = [...interacciones];
+
       for (const interRow of parsed.interacciones) {
         step++;
         setImportProgress({
@@ -886,25 +992,98 @@ export default function App() {
           .filter(Boolean) as string[];
 
         const matchedContactoIds = interRow.contactosNombres
-          .map(name => contactos.find(c => c.nombre.trim().toLowerCase() === name.trim().toLowerCase())?.id)
+          .map(name => contactNameToIdMap.get(name.trim().toLowerCase()) || contactos.find(c => c.nombre.trim().toLowerCase() === name.trim().toLowerCase())?.id)
           .filter(Boolean) as string[];
 
-        const newInteraccion: Omit<Interaccion, 'id'> = {
-          asunto: interRow.asunto,
-          tipo: interRow.tipo,
-          fecha: interRow.fecha,
-          fechaLimite: interRow.fechaLimite || null,
-          estado: interRow.estado,
-          contactoId: matchedContactoIds[0] || '',
-          contactoIds: matchedContactoIds,
-          empresaIds: matchedEmpresaIds,
-          descripcion: interRow.descripcion,
-          resolucion: interRow.resolucion,
-          pasos: interRow.pasosRaw ? [{ texto: interRow.pasosRaw, fecha: interRow.fecha, completado: interRow.estado === 'completada' }] : [],
-        };
+        const cleanAsunto = interRow.asunto.trim().toLowerCase();
+        const cleanFecha = (interRow.fecha || '').trim();
 
-        await saveDocument('interacciones', newInteraccion);
-        interaccionesCreadas++;
+        const existingInter = localInteracciones.find(existing => {
+          const existingAsunto = (existing.asunto || '').trim().toLowerCase();
+          const existingFecha = (existing.fecha || '').trim();
+
+          // Must have matching asunto and fecha
+          if (existingAsunto !== cleanAsunto || existingFecha !== cleanFecha) {
+            return false;
+          }
+
+          // Check company overlap
+          const existingEmpIds = existing.empresaIds || [];
+          const hasEmpFilter = matchedEmpresaIds.length > 0 && existingEmpIds.length > 0;
+          const empOverlap = hasEmpFilter && existingEmpIds.some(id => matchedEmpresaIds.includes(id));
+
+          // Check contact overlap
+          const existingContIds = existing.contactoIds?.length 
+            ? existing.contactoIds 
+            : (existing.contactoId ? [existing.contactoId] : []);
+          const hasContFilter = matchedContactoIds.length > 0 && existingContIds.length > 0;
+          const contOverlap = hasContFilter && existingContIds.some(id => matchedContactoIds.includes(id));
+
+          // If both have company filters and don't overlap, and both have contact filters and don't overlap:
+          if (hasEmpFilter && !empOverlap && !hasContFilter) return false;
+          if (hasContFilter && !contOverlap && !hasEmpFilter) return false;
+          if (hasEmpFilter && hasContFilter && !empOverlap && !contOverlap) return false;
+
+          // If there is an overlap in either company or contact, it's a match!
+          if (empOverlap || contOverlap) return true;
+
+          // If neither has company/contact specified or only one side does:
+          if (existing.tipo === interRow.tipo) return true;
+          if ((existing.descripcion || '').trim().toLowerCase() === (interRow.descripcion || '').trim().toLowerCase()) return true;
+
+          return false;
+        });
+
+        if (existingInter && existingInter.id) {
+          const mergedEmpresaIds = [...new Set([...(existingInter.empresaIds || []), ...matchedEmpresaIds])];
+          const existingContIds = existingInter.contactoIds?.length ? existingInter.contactoIds : (existingInter.contactoId ? [existingInter.contactoId] : []);
+          const mergedContactoIds = [...new Set([...existingContIds, ...matchedContactoIds])];
+
+          const updatedInteraccion: Partial<Interaccion> = {
+            tipo: interRow.tipo || existingInter.tipo,
+            estado: interRow.estado || existingInter.estado,
+            fechaLimite: interRow.fechaLimite || existingInter.fechaLimite || null,
+            contactoId: mergedContactoIds[0] || existingInter.contactoId || '',
+            contactoIds: mergedContactoIds,
+            empresaIds: mergedEmpresaIds,
+            descripcion: interRow.descripcion
+              ? (existingInter.descripcion && existingInter.descripcion !== interRow.descripcion
+                  ? `${existingInter.descripcion}\n${interRow.descripcion}`
+                  : (existingInter.descripcion || interRow.descripcion))
+              : (existingInter.descripcion || ''),
+            resolucion: interRow.resolucion || existingInter.resolucion || '',
+            pasos: interRow.pasosRaw
+              ? [
+                  ...(existingInter.pasos || []),
+                  { texto: interRow.pasosRaw, fecha: interRow.fecha, completado: interRow.estado === 'completada' }
+                ]
+              : (existingInter.pasos || [])
+          };
+
+          await saveDocument('interacciones', updatedInteraccion, existingInter.id);
+          Object.assign(existingInter, updatedInteraccion);
+          interaccionesActualizadas++;
+        } else {
+          const newInteraccion: Omit<Interaccion, 'id'> = {
+            asunto: interRow.asunto.trim(),
+            tipo: interRow.tipo,
+            fecha: interRow.fecha,
+            fechaLimite: interRow.fechaLimite || null,
+            estado: interRow.estado,
+            contactoId: matchedContactoIds[0] || '',
+            contactoIds: matchedContactoIds,
+            empresaIds: matchedEmpresaIds,
+            descripcion: interRow.descripcion,
+            resolucion: interRow.resolucion,
+            pasos: interRow.pasosRaw ? [{ texto: interRow.pasosRaw, fecha: interRow.fecha, completado: interRow.estado === 'completada' }] : [],
+          };
+
+          const newId = await saveDocument('interacciones', newInteraccion);
+          if (newId) {
+            localInteracciones.push({ ...newInteraccion, id: newId });
+          }
+          interaccionesCreadas++;
+        }
       }
 
       // 4. Process Relaciones
@@ -942,7 +1121,8 @@ export default function App() {
           ...(empresasActualizadas > 0 ? [`• ${empresasActualizadas} proveedores existentes actualizados`] : []),
           ...(contactosCreados > 0 ? [`• ${contactosCreados} contactos añadidos`] : []),
           ...(contactosActualizados > 0 ? [`• ${contactosActualizados} contactos actualizados`] : []),
-          ...(interaccionesCreadas > 0 ? [`• ${interaccionesCreadas} interacciones registradas`] : []),
+          ...(interaccionesCreadas > 0 ? [`• ${interaccionesCreadas} nuevas interacciones registradas`] : []),
+          ...(interaccionesActualizadas > 0 ? [`• ${interaccionesActualizadas} interacciones existentes actualizadas (duplicados evitados)`] : []),
           ...(relacionesCreadas > 0 ? [`• ${relacionesCreadas} relaciones fabricante-distribuidor registradas`] : []),
         ],
         isSuccess: true,
@@ -1516,6 +1696,38 @@ export default function App() {
 
             {currentTab === 'interacciones' && (
               <div className="space-y-6">
+                {/* Banner de interacciones duplicadas detectadas */}
+                {duplicateInteraccionesIds.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-fade-in">
+                    <div className="flex items-start sm:items-center gap-3">
+                      <span className="text-2xl flex-shrink-0">⚠️</span>
+                      <div>
+                        <p className="text-sm font-bold text-amber-950">
+                          Se han detectado {duplicateInteraccionesIds.length} interacciones duplicadas
+                        </p>
+                        <p className="text-xs text-amber-800">
+                          Generadas por importaciones previas sin filtro de duplicados. Puedes limpiarlas automáticamente conservando la versión con más información.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isCleaningDuplicates}
+                      onClick={handleCleanDuplicateInteracciones}
+                      className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm hover:shadow flex items-center gap-2 cursor-pointer whitespace-nowrap self-start sm:self-auto"
+                    >
+                      {isCleaningDuplicates ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Limpiando...</span>
+                        </>
+                      ) : (
+                        <span>🧹 Limpiar duplicados ({duplicateInteraccionesIds.length})</span>
+                      )}
+                    </button>
+                  </div>
+                )}
+
                 {/* Quick Filters */}
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-slate-50 border border-slate-200/60 rounded-2xl p-4 shadow-sm">
                   {/* Tipo de Interacción */}
