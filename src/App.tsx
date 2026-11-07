@@ -895,6 +895,7 @@ export default function App() {
       let interaccionesCreadas = 0;
       let interaccionesActualizadas = 0;
       let relacionesCreadas = 0;
+      let dependenciasVinculadas = 0;
 
       // Fast lookup map for matching companies to IDs
       const nameToIdMap = new Map<string, string>();
@@ -984,9 +985,15 @@ export default function App() {
 
       // 2. Process Contactos
       const contactNameToIdMap = new Map<string, string>();
+      const contactNameAndEmpToIdMap = new Map<string, string>();
+
       contactos.forEach(c => {
         if (c.nombre && c.id) {
-          contactNameToIdMap.set(c.nombre.trim().toLowerCase(), c.id);
+          const lowerName = c.nombre.trim().toLowerCase();
+          contactNameToIdMap.set(lowerName, c.id);
+          if (c.empresaId) {
+            contactNameAndEmpToIdMap.set(`${lowerName}:::${c.empresaId}`, c.id);
+          }
         }
       });
 
@@ -1029,13 +1036,17 @@ export default function App() {
           };
           await saveDocument('contactos', updatedContact, existingContact.id);
           contactNameToIdMap.set(cleanContNombre.toLowerCase(), existingContact.id);
+          const empIdToUse = targetEmpresaId || existingContact.empresaId;
+          if (empIdToUse) {
+            contactNameAndEmpToIdMap.set(`${cleanContNombre.toLowerCase()}:::${empIdToUse}`, existingContact.id);
+          }
           contactosActualizados++;
         } else {
           const newContact: Omit<Contacto, 'id'> = {
             nombre: cleanContNombre,
             empresaId: targetEmpresaId,
             cargo: contRow.cargo || '',
-            reportaA: null,
+            reportaA: null, // Se vincula en la pasada 2.1 cuando todos los contactos ya tienen ID
             telefono: contRow.telefono || '',
             email: contRow.email || '',
             linkedin: contRow.linkedin || '',
@@ -1050,8 +1061,41 @@ export default function App() {
           const newContId = await saveDocument('contactos', newContact);
           if (newContId) {
             contactNameToIdMap.set(cleanContNombre.toLowerCase(), newContId);
+            if (targetEmpresaId) {
+              contactNameAndEmpToIdMap.set(`${cleanContNombre.toLowerCase()}:::${targetEmpresaId}`, newContId);
+            }
             contactosCreados++;
           }
+        }
+      }
+
+      // 2.1 Vincular Dependencias Jerárquicas (reportaA / Organigrama)
+      for (const contRow of parsed.contactos) {
+        if (!contRow.reportaA || !contRow.reportaA.trim()) continue;
+
+        const cleanContNombre = contRow.nombre.trim();
+        let targetEmpresaId = '';
+        if (contRow.empresaNombre) {
+          targetEmpresaId = nameToIdMap.get(contRow.empresaNombre.trim().toLowerCase()) || '';
+          if (!targetEmpresaId) {
+            const foundEmp = empresas.find(e => e.nombre.trim().toLowerCase() === contRow.empresaNombre!.trim().toLowerCase());
+            if (foundEmp?.id) targetEmpresaId = foundEmp.id;
+          }
+        }
+
+        const contactId = (targetEmpresaId ? contactNameAndEmpToIdMap.get(`${cleanContNombre.toLowerCase()}:::${targetEmpresaId}`) : undefined) ||
+          contactNameToIdMap.get(cleanContNombre.toLowerCase());
+
+        if (!contactId) continue;
+
+        const cleanSupervisorNombre = contRow.reportaA.trim().toLowerCase();
+        // Buscar al superior priorizando la misma empresa
+        const supervisorId = (targetEmpresaId ? contactNameAndEmpToIdMap.get(`${cleanSupervisorNombre}:::${targetEmpresaId}`) : undefined) ||
+          contactNameToIdMap.get(cleanSupervisorNombre);
+
+        if (supervisorId && supervisorId !== contactId) {
+          await saveDocument('contactos', { reportaA: supervisorId }, contactId);
+          dependenciasVinculadas++;
         }
       }
 
@@ -1200,6 +1244,7 @@ export default function App() {
           ...(empresasActualizadas > 0 ? [`• ${empresasActualizadas} proveedores existentes actualizados`] : []),
           ...(contactosCreados > 0 ? [`• ${contactosCreados} contactos añadidos`] : []),
           ...(contactosActualizados > 0 ? [`• ${contactosActualizados} contactos actualizados`] : []),
+          ...(dependenciasVinculadas > 0 ? [`• ${dependenciasVinculadas} dependencias jerárquicas (reporta a) vinculadas en el organigrama`] : []),
           ...(interaccionesCreadas > 0 ? [`• ${interaccionesCreadas} nuevas interacciones registradas`] : []),
           ...(interaccionesActualizadas > 0 ? [`• ${interaccionesActualizadas} interacciones existentes actualizadas (duplicados evitados)`] : []),
           ...(relacionesCreadas > 0 ? [`• ${relacionesCreadas} relaciones fabricante-distribuidor registradas`] : []),

@@ -534,6 +534,7 @@ export const downloadExcelTemplate = () => {
     { Campo: 'Tags', Obligatorio: 'NO', Descripcion: 'Etiquetas o palabras clave separadas por comas (ej: mecánica, plástico).' },
     { Campo: 'UNSPSC', Obligatorio: 'NO', Descripcion: 'Código numérico de 8 dígitos de clasificación de suministros o servicios.' },
     { Campo: 'EmpresaPrincipal', Obligatorio: 'SÍ (para contacto)', Descripcion: 'Nombre exacto de la empresa a la que pertenece el contacto.' },
+    { Campo: 'ReportaA', Obligatorio: 'NO', Descripcion: 'Nombre del contacto superior al que reporta jerárquicamente en el organigrama.' },
   ];
   const wsInstrucciones = XLSX.utils.json_to_sheet(instrucciones);
   wsInstrucciones['!cols'] = [{ wch: 20 }, { wch: 18 }, { wch: 60 }];
