@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Building2, Users, MessageSquare, Settings, Search, Calendar, AlertTriangle, AlertCircle,
   LogOut, Plus, Upload, Download, RefreshCw, CheckCircle2, ChevronRight, X, Sparkles, Filter,
-  LayoutGrid, List, Clock, CheckSquare, FileText, Check, ExternalLink, Paperclip, MapPin, Trash2
+  LayoutGrid, List, Clock, CheckSquare, FileText, Check, ExternalLink, Paperclip, MapPin, Trash2, Tag
 } from 'lucide-react';
 
 // Firebase core
@@ -58,7 +58,7 @@ export default function App() {
   const [syncing, setSyncing] = useState(false);
 
   // App Navigation & Filters
-  const [currentTab, setCurrentTab] = useState<'empresas' | 'contactos' | 'interacciones' | 'mapa' | 'configuracion'>('empresas');
+  const [currentTab, setCurrentTab] = useState<'empresas' | 'contactos' | 'interacciones' | 'mapa' | 'etiquetas' | 'configuracion'>('empresas');
   const [mapTipoFilter, setMapTipoFilter] = useState<string>('todos');
   const [mapEstadoFilter, setMapEstadoFilter] = useState<string>('todos');
   const [globalSearch, setGlobalSearch] = useState('');
@@ -1479,7 +1479,7 @@ export default function App() {
             </button>
             <button 
               onClick={() => { setCurrentTab('mapa'); setQuickFilter(''); }}
-              className={`flex-1 py-2.5 px-2 sm:px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              className={`flex-1 py-2.5 px-2 sm:px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'mapa' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
               }`}
               title="Mapa de Proveedores"
@@ -1487,8 +1487,17 @@ export default function App() {
               <MapPin className="w-4 h-4" /> <span className="hidden sm:inline">Mapa</span>
             </button>
             <button 
+              onClick={() => { setCurrentTab('etiquetas'); setQuickFilter(''); }}
+              className={`flex-1 py-2.5 px-2 sm:px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                currentTab === 'etiquetas' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
+              }`}
+              title="Gestión de Etiquetas"
+            >
+              <Tag className="w-4 h-4" /> <span className="hidden sm:inline">Etiquetas</span>
+            </button>
+            <button 
               onClick={() => { setCurrentTab('configuracion'); setQuickFilter(''); }}
-              className={`flex-1 py-2.5 px-2 sm:px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              className={`flex-1 py-2.5 px-2 sm:px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'configuracion' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
               }`}
               title="Configuración"
@@ -1498,7 +1507,7 @@ export default function App() {
           </div>
 
           {/* Action Sub-Toolbar */}
-          {currentTab !== 'configuracion' && currentTab !== 'mapa' && (
+          {currentTab !== 'configuracion' && currentTab !== 'mapa' && currentTab !== 'etiquetas' && (
             <div className="p-4 border-b border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-2.5 w-full sm:w-auto">
                 <button 
@@ -2146,14 +2155,18 @@ export default function App() {
               </div>
             )}
 
-            {currentTab === 'configuracion' && (
+            {currentTab === 'etiquetas' && (
               <div className="space-y-6">
                 <TagManager 
                   empresas={empresas}
                   onUpdateEmpresa={async (emp) => { await saveDocument('empresas', emp, emp.id); }}
                   onOpenEmpresa={(id) => handleOpenEmpresa(id)}
                 />
+              </div>
+            )}
 
+            {currentTab === 'configuracion' && (
+              <div className="space-y-6">
                 {/* Import/Export Card */}
                 <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
                   <h4 className="font-bold text-slate-800 text-sm">Respaldo y Archivos</h4>
