@@ -1367,21 +1367,28 @@ export default function App() {
     <div className="min-h-screen bg-slate-50/50 text-slate-800 font-sans flex flex-col">
       {/* 1. Header Banner */}
       <header className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-9 bg-indigo-600 rounded-xl flex items-center justify-center p-1.5 shadow-md text-white">
-              <Logo className="w-7 h-7" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 sm:py-4 flex flex-col md:flex-row items-center justify-between gap-3 sm:gap-4">
+          <div className="flex items-center justify-between w-full md:w-auto">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 sm:w-10 sm:h-9 bg-indigo-600 rounded-xl flex items-center justify-center p-1.5 shadow-md text-white shrink-0">
+                <Logo className="w-6 h-6 sm:w-7 sm:h-7" />
+              </div>
+              <div>
+                <h1 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+                  SRM
+                  <span className="text-[10px] bg-indigo-500/20 text-indigo-300 font-bold px-2 py-0.5 rounded-full border border-indigo-500/20">Aura v1.0</span>
+                </h1>
+                <p className="text-[11px] sm:text-xs text-slate-400 truncate max-w-[200px] sm:max-w-none">Supplier Relationship Management Portal</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-lg font-black tracking-tight text-white flex items-center gap-2">
-                SRM
-                <span className="text-[10px] bg-indigo-500/20 text-indigo-300 font-bold px-2 py-0.5 rounded-full border border-indigo-500/20">Aura v1.0</span>
-              </h1>
-              <p className="text-xs text-slate-400">Supplier Relationship Management Portal</p>
+
+            {/* Mobile sync status dot */}
+            <div className="flex items-center gap-1.5 md:hidden text-[10px] text-emerald-400 font-semibold">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             </div>
           </div>
 
-          <div className="flex items-center gap-4 w-full md:w-auto">
+          <div className="flex items-center gap-2.5 sm:gap-4 w-full md:w-auto">
             {/* Realtime Search input with Ctrl+K badge */}
             <div className="relative flex-1 md:w-72">
               <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
@@ -1391,7 +1398,7 @@ export default function App() {
                 value={globalSearch}
                 onChange={(e) => setGlobalSearch(e.target.value)}
                 onFocus={() => setShowSearchModal(true)}
-                className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2 pl-9 pr-14 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:bg-slate-850 transition-all font-medium"
+                className="w-full bg-slate-800 border border-slate-700 rounded-xl py-2 pl-9 pr-10 sm:pr-14 text-xs text-slate-200 outline-none focus:border-indigo-500 focus:bg-slate-850 transition-all font-medium"
               />
               <div className="absolute right-2.5 top-1/2 -translate-y-1/2 hidden sm:flex items-center pointer-events-none">
                 <kbd className="text-[10px] font-mono bg-slate-700/80 text-slate-300 px-1.5 py-0.5 rounded border border-slate-600 shadow-2xs">Ctrl K</kbd>
@@ -1399,14 +1406,14 @@ export default function App() {
               {globalSearch && (
                 <button 
                   onClick={() => setGlobalSearch('')}
-                  className="absolute right-12 top-2.5 text-slate-400 hover:text-white cursor-pointer"
+                  className="absolute right-3 sm:right-12 top-2.5 text-slate-400 hover:text-white cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
             </div>
 
-            <div className="flex items-center gap-2.5 flex-shrink-0">
+            <div className="flex items-center gap-2 sm:gap-2.5 flex-shrink-0">
               <div className="text-right hidden md:block">
                 <p className="text-xs font-bold text-slate-300">{user.email}</p>
                 <p className="text-[10px] text-emerald-400 font-medium flex items-center gap-1 justify-end">
@@ -1415,11 +1422,11 @@ export default function App() {
               </div>
               <button 
                 onClick={() => setShowCalendarModal(true)}
-                className="flex items-center gap-1.5 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all cursor-pointer text-xs font-bold shadow-md shadow-indigo-900/20"
+                className="flex items-center gap-1.5 py-2 px-2.5 sm:px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-all cursor-pointer text-xs font-bold shadow-md shadow-indigo-900/20"
                 title="Abrir Calendario"
               >
-                <Calendar className="w-3.5 h-3.5" />
-                <span>Calendario</span>
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden sm:inline">Calendario</span>
               </button>
               <button 
                 onClick={handleLogout}
@@ -1434,7 +1441,7 @@ export default function App() {
       </header>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-6 lg:px-8 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {/* Dashboard Stats */}
         <DashboardStats stats={getStats()} onNavigate={(tab) => { setCurrentTab(tab); setQuickFilter(''); }} />
 
@@ -1452,87 +1459,94 @@ export default function App() {
           <div className="flex border-b border-slate-200 bg-slate-50/50 p-1">
             <button 
               onClick={() => { setCurrentTab('empresas'); setQuickFilter(''); }}
-              className={`flex-1 py-2.5 px-2 sm:px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              className={`flex-1 py-2 sm:py-2.5 px-1 sm:px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'empresas' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
               }`}
               title="Empresas"
+              aria-label="Empresas"
             >
-              <Building2 className="w-4 h-4" /> <span className="hidden sm:inline">Empresas</span>
+              <Building2 className="w-4 h-4 shrink-0" /> <span className="hidden md:inline">Empresas</span>
             </button>
             <button 
               onClick={() => { setCurrentTab('contactos'); setQuickFilter(''); }}
-              className={`flex-1 py-2.5 px-2 sm:px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              className={`flex-1 py-2 sm:py-2.5 px-1 sm:px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'contactos' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
               }`}
               title="Contactos"
+              aria-label="Contactos"
             >
-              <Users className="w-4 h-4" /> <span className="hidden sm:inline">Contactos</span>
+              <Users className="w-4 h-4 shrink-0" /> <span className="hidden md:inline">Contactos</span>
             </button>
             <button 
               onClick={() => { setCurrentTab('interacciones'); setQuickFilter(''); }}
-              className={`flex-1 py-2.5 px-2 sm:px-4 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              className={`flex-1 py-2 sm:py-2.5 px-1 sm:px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'interacciones' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
               }`}
               title="Interacciones"
+              aria-label="Interacciones"
             >
-              <MessageSquare className="w-4 h-4" /> <span className="hidden sm:inline">Interacciones</span>
+              <MessageSquare className="w-4 h-4 shrink-0" /> <span className="hidden md:inline">Interacciones</span>
             </button>
             <button 
               onClick={() => { setCurrentTab('mapa'); setQuickFilter(''); }}
-              className={`flex-1 py-2.5 px-2 sm:px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              className={`flex-1 py-2 sm:py-2.5 px-1 sm:px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'mapa' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
               }`}
               title="Mapa de Proveedores"
+              aria-label="Mapa"
             >
-              <MapPin className="w-4 h-4" /> <span className="hidden sm:inline">Mapa</span>
+              <MapPin className="w-4 h-4 shrink-0" /> <span className="hidden md:inline">Mapa</span>
             </button>
             <button 
               onClick={() => { setCurrentTab('etiquetas'); setQuickFilter(''); }}
-              className={`flex-1 py-2.5 px-2 sm:px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              className={`flex-1 py-2 sm:py-2.5 px-1 sm:px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'etiquetas' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
               }`}
               title="Gestión de Etiquetas"
+              aria-label="Etiquetas"
             >
-              <Tag className="w-4 h-4" /> <span className="hidden sm:inline">Etiquetas</span>
+              <Tag className="w-4 h-4 shrink-0" /> <span className="hidden md:inline">Etiquetas</span>
             </button>
             <button 
               onClick={() => { setCurrentTab('configuracion'); setQuickFilter(''); }}
-              className={`flex-1 py-2.5 px-2 sm:px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+              className={`flex-1 py-2 sm:py-2.5 px-1 sm:px-3 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                 currentTab === 'configuracion' ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50' : 'text-slate-500 hover:text-slate-800'
               }`}
               title="Configuración"
+              aria-label="Configuración"
             >
-              <Settings className="w-4 h-4" /> <span className="hidden sm:inline">Configuración</span>
+              <Settings className="w-4 h-4 shrink-0" /> <span className="hidden md:inline">Configuración</span>
             </button>
           </div>
 
           {/* Action Sub-Toolbar */}
           {currentTab !== 'configuracion' && currentTab !== 'mapa' && currentTab !== 'etiquetas' && (
-            <div className="p-4 border-b border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex items-center gap-2.5 w-full sm:w-auto">
+            <div className="p-3 sm:p-4 border-b border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-3 sm:gap-4">
+              <div className="flex items-center gap-2 sm:gap-2.5 w-full sm:w-auto">
                 <button 
                   onClick={() => {
                     if (currentTab === 'empresas') handleOpenCreateEmpresa();
                     if (currentTab === 'contactos') handleOpenCreateContacto();
                     if (currentTab === 'interacciones') setShowAddInteractionModal(true);
                   }}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-md shadow-indigo-100 flex items-center gap-1.5 transition-all cursor-pointer flex-shrink-0"
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl shadow-md shadow-indigo-100 flex items-center gap-1.5 transition-all cursor-pointer flex-shrink-0"
                 >
-                  <Plus className="w-4 h-4" /> Nuevo {currentTab === 'empresas' ? 'Proveedor' : currentTab === 'contactos' ? 'Contacto' : 'Registro'}
+                  <Plus className="w-4 h-4 shrink-0" /> 
+                  <span>Nuevo<span className="hidden sm:inline"> {currentTab === 'empresas' ? 'Proveedor' : currentTab === 'contactos' ? 'Contacto' : 'Registro'}</span></span>
                 </button>
                 <div className="relative flex-1 sm:w-60">
-                  <Filter className="absolute left-3 top-2.5 w-3.5 h-3.5 text-slate-400" />
+                  <Filter className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-slate-400" />
                   <input 
                     type="text" 
                     placeholder={`Filtrar ${currentTab}...`}
                     value={quickFilter}
                     onChange={(e) => setQuickFilter(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 pl-8.5 pr-4 text-xs text-slate-700 outline-none focus:bg-white focus:border-indigo-500 transition-all font-semibold"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg py-2 pl-8 pr-3 text-xs text-slate-700 outline-none focus:bg-white focus:border-indigo-500 transition-all font-semibold"
                   />
                 </div>
               </div>
 
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+              <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto justify-between sm:justify-end">
                 {currentTab === 'empresas' && (
                   <div className="flex items-center gap-1.5 shrink-0">
                     <button
@@ -1557,11 +1571,11 @@ export default function App() {
                   </div>
                 )}
                 {currentTab === 'empresas' && (
-                  <div className="relative min-w-[200px] max-w-[260px]" ref={mainUnspscDropdownRef}>
+                  <div className="relative flex-1 sm:flex-none min-w-0 sm:min-w-[200px] sm:max-w-[260px]" ref={mainUnspscDropdownRef}>
                     <div className="relative">
                       <input
                         type="text"
-                        placeholder="📋 Buscar/Filtrar por UNSPSC..."
+                        placeholder="📋 UNSPSC..."
                         value={selectedUnspsc ? `Filtro: ${selectedUnspsc}` : mainUnspscSearch}
                         onFocus={() => {
                           setShowMainUnspscDropdown(true);
@@ -1673,7 +1687,7 @@ export default function App() {
                     <button
                       type="button"
                       onClick={() => setInteraccionesViewMode('timeline')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                         interaccionesViewMode === 'timeline'
                           ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50 font-extrabold'
                           : 'text-slate-500 hover:text-slate-800'
@@ -1681,12 +1695,12 @@ export default function App() {
                       title="Vista de Línea de Tiempo"
                     >
                       <List className="w-3.5 h-3.5" />
-                      <span className="hidden xs:inline">Cronología</span>
+                      <span className="hidden sm:inline">Cronología</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setInteraccionesViewMode('grid')}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                      className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
                         interaccionesViewMode === 'grid'
                           ? 'bg-white text-indigo-600 shadow-sm border border-slate-200/50 font-extrabold'
                           : 'text-slate-500 hover:text-slate-800'
@@ -1694,14 +1708,14 @@ export default function App() {
                       title="Vista de Tarjetas"
                     >
                       <LayoutGrid className="w-3.5 h-3.5" />
-                      <span className="hidden xs:inline">Tarjetas</span>
+                      <span className="hidden sm:inline">Tarjetas</span>
                     </button>
                   </div>
                 )}
                 <select 
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-xs text-slate-600 font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  className="bg-slate-50 border border-slate-200 rounded-lg py-1.5 sm:py-2 px-2 sm:px-3 text-xs text-slate-600 font-semibold focus:outline-none focus:border-indigo-500 cursor-pointer"
                 >
                   <option value="nombre_asc">📝 Nombre (A-Z)</option>
                   <option value="nombre_desc">📝 Nombre (Z-A)</option>
@@ -1713,16 +1727,16 @@ export default function App() {
           )}
 
           {currentTab === 'mapa' && (
-            <div className="p-4 border-b border-slate-200 bg-white flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tipo:</span>
-                  <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+            <div className="p-3 sm:p-4 border-b border-slate-200 bg-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tipo:</span>
+                  <div className="flex flex-wrap bg-slate-100 p-0.5 sm:p-1 rounded-xl gap-0.5 sm:gap-1">
                     {(['todos', 'fabricante', 'distribuidor'] as const).map(tipo => (
                       <button
                         key={tipo}
                         onClick={() => setMapTipoFilter(tipo)}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                        className={`px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                           mapTipoFilter === tipo ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
                         }`}
                       >
@@ -1732,14 +1746,14 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Estado:</span>
-                  <div className="flex bg-slate-100 p-1 rounded-xl gap-1">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <span className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider">Estado:</span>
+                  <div className="flex flex-wrap bg-slate-100 p-0.5 sm:p-1 rounded-xl gap-0.5 sm:gap-1">
                     {(['todos', 'activo', 'prospecto', 'inactivo'] as const).map(estado => (
                       <button
                         key={estado}
                         onClick={() => setMapEstadoFilter(estado)}
-                        className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                        className={`px-2.5 sm:px-3 py-1 sm:py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
                           mapEstadoFilter === estado ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-800'
                         }`}
                       >
@@ -1750,7 +1764,7 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="text-xs text-slate-500 font-semibold flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/60">
+              <div className="text-xs text-slate-500 font-semibold flex items-center gap-1.5 bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200/60 self-start sm:self-auto">
                 <MapPin className="w-3.5 h-3.5 text-indigo-500" />
                 <span>{empresas.length} empresas registradas</span>
               </div>
@@ -1758,7 +1772,7 @@ export default function App() {
           )}
  
           {/* List/Grid Container */}
-          <div className="p-6">
+          <div className="p-3 sm:p-6">
             {currentTab === 'empresas' && (selectedTag || selectedUnspsc) && (
               <div className="mb-4 flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 p-2.5 rounded-xl text-xs text-slate-600 font-semibold shadow-sm">
                 <span>Filtros Activos:</span>
@@ -1787,7 +1801,7 @@ export default function App() {
             )}
 
             {currentTab === 'empresas' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                 {filteredEmpresas.map(emp => (
                   <CompanyCard 
                     key={emp.id}
@@ -1803,7 +1817,7 @@ export default function App() {
             )}
 
             {currentTab === 'contactos' && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                 {filteredContactos.map(cont => {
                   const empName = empresas.find(e => e.id === cont.empresaId)?.nombre || 'Sin empresa';
                   const pend = interacciones.filter(i => {
@@ -2356,10 +2370,10 @@ export default function App() {
 
       {/* Calendar Modal Overlay */}
       {showCalendarModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col">
             {/* Header */}
-            <div className="p-5 bg-indigo-600 text-white flex items-center justify-between">
+            <div className="p-4 sm:p-5 bg-indigo-600 text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <Calendar className="w-5 h-5" />
                 <div>
@@ -2377,7 +2391,7 @@ export default function App() {
             </div>
 
             {/* Content */}
-            <div className="p-6 overflow-y-auto max-h-[80vh]">
+            <div className="p-3 sm:p-6 overflow-y-auto max-h-[85vh]">
               <CustomCalendar 
                 interacciones={interacciones}
                 contactos={contactos}
@@ -2390,7 +2404,7 @@ export default function App() {
             </div>
 
             {/* Footer */}
-            <div className="p-4 bg-slate-50 border-t border-slate-100 text-right text-[10px] text-slate-400">
+            <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-100 text-right text-[10px] text-slate-400">
               Presiona <span className="bg-white border border-slate-200 px-1.5 py-0.5 rounded font-mono shadow-sm">ESC</span> o haz clic en la X para cerrar.
             </div>
           </div>
@@ -2399,10 +2413,10 @@ export default function App() {
 
       {/* Alerts Modal Overlay */}
       {showAlertsModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-start justify-center pt-[10vh] px-4 overflow-y-auto pb-10">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center sm:items-start justify-center pt-3 sm:pt-[10vh] px-3 sm:px-4 overflow-y-auto pb-4 sm:pb-10">
           <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col my-auto">
             {/* Header */}
-            <div className="p-5 bg-amber-500 text-white flex items-center justify-between">
+            <div className="p-4 sm:p-5 bg-amber-500 text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <AlertTriangle className="w-5 h-5" />
                 <div>
@@ -2585,10 +2599,10 @@ export default function App() {
 
       {/* Global Search Modal overlay */}
       {showSearchModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-start justify-center pt-[10vh] px-4">
-          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-start justify-center pt-3 sm:pt-[10vh] px-3 sm:px-4">
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[85vh]">
             {/* Search Header */}
-            <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
+            <div className="p-3.5 sm:p-4 bg-slate-50 border-b border-slate-100 flex items-center gap-2.5 sm:gap-3">
               <Search className="w-5 h-5 text-indigo-500 shrink-0" />
               <input 
                 type="text" 
@@ -2596,12 +2610,12 @@ export default function App() {
                 placeholder="Escribe para buscar proveedores, contactos o interacciones..."
                 value={globalSearch}
                 onChange={(e) => setGlobalSearch(e.target.value)}
-                className="w-full bg-transparent text-slate-800 outline-none placeholder-slate-400 text-sm font-medium"
+                className="w-full bg-transparent text-slate-800 outline-none placeholder-slate-400 text-xs sm:text-sm font-medium"
               />
               {globalSearch && (
                 <button 
                   onClick={() => setGlobalSearch('')}
-                  className="text-xs text-slate-400 hover:text-slate-600 bg-slate-200/50 hover:bg-slate-200 px-2 py-1 rounded cursor-pointer"
+                  className="text-xs text-slate-400 hover:text-slate-600 bg-slate-200/50 hover:bg-slate-200 px-2 py-1 rounded cursor-pointer shrink-0"
                 >
                   Limpiar
                 </button>
@@ -2611,7 +2625,7 @@ export default function App() {
                   setShowSearchModal(false);
                   setGlobalSearch('');
                 }}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200/40 transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-200/40 transition-colors cursor-pointer shrink-0"
                 title="Cerrar buscador"
               >
                 <X className="w-5 h-5" />
@@ -2619,7 +2633,7 @@ export default function App() {
             </div>
 
             {/* Results Area */}
-            <div className="p-5 max-h-[60vh] overflow-y-auto space-y-6">
+            <div className="p-4 sm:p-5 max-h-[75vh] sm:max-h-[60vh] overflow-y-auto space-y-5 sm:space-y-6">
               {!globalSearch.trim() ? (
                 <div className="text-center py-8 text-slate-400 space-y-2">
                   <div className="text-4xl">🔍</div>
@@ -2979,12 +2993,14 @@ export default function App() {
 
       {/* Toast Notice for Export */}
       {exportNotice && (
-        <div className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-4 py-3 rounded-xl shadow-xl border text-xs font-bold transition-all animate-in slide-in-from-bottom duration-200 ${
+        <div className={`fixed bottom-4 right-4 left-4 sm:left-auto sm:right-6 sm:bottom-6 z-50 flex items-center justify-between gap-3 px-4 py-3 rounded-xl shadow-xl border text-xs font-bold transition-all animate-in slide-in-from-bottom duration-200 ${
           exportNotice.isError ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-slate-900 border-slate-800 text-white'
         }`}>
-          {exportNotice.isError ? <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
-          <span>{exportNotice.message}</span>
-          <button type="button" onClick={() => setExportNotice(null)} className="ml-2 text-slate-400 hover:text-white font-bold">✕</button>
+          <div className="flex items-center gap-2.5 min-w-0">
+            {exportNotice.isError ? <AlertTriangle className="w-4 h-4 text-rose-500 shrink-0" /> : <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
+            <span className="truncate">{exportNotice.message}</span>
+          </div>
+          <button type="button" onClick={() => setExportNotice(null)} className="ml-2 text-slate-400 hover:text-white font-bold shrink-0">✕</button>
         </div>
       )}
     </div>

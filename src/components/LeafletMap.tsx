@@ -362,8 +362,8 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
 
       {/* Map Footer Legend & Status */}
       <div className="p-3 sm:px-4 bg-slate-50/70 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2 font-medium">
-        <p className="truncate text-slate-600">{statusMessage || 'Cargando mapa interactivo...'}</p>
-        <div className="flex items-center gap-4 text-[11px] font-bold shrink-0">
+        <p className="truncate text-slate-600 w-full sm:w-auto text-center sm:text-left">{statusMessage || 'Cargando mapa interactivo...'}</p>
+        <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-4 text-[11px] font-bold shrink-0">
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-blue-600 border border-white shadow-2xs"></span> 🏭 Fabricante
           </span>

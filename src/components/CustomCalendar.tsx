@@ -49,10 +49,10 @@ export const CustomCalendar: React.FC<CustomCalendarProps> = ({
 
   const getEventsForDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    
+
     // Check for interaction events
     const dayInteractions = interacciones.filter(i => i.fecha === dateStr);
-    
+
     // Check for deadline events
     const dayDeadlines = interacciones.filter(i => i.fechaLimite === dateStr && i.estado === 'pendiente');
 
@@ -75,7 +75,7 @@ export const CustomCalendar: React.FC<CustomCalendarProps> = ({
           <span>{monthNames[month]} {year}</span>
         </h3>
         <div className="flex gap-1">
-          <button 
+          <button
             onClick={handlePrevMonth}
             className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
           >
@@ -87,7 +87,7 @@ export const CustomCalendar: React.FC<CustomCalendarProps> = ({
           >
             Hoy
           </button>
-          <button 
+          <button
             onClick={handleNextMonth}
             className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors"
           >
@@ -106,7 +106,7 @@ export const CustomCalendar: React.FC<CustomCalendarProps> = ({
         <div>Dom</div>
       </div>
 
-      <div className="grid grid-cols-7 auto-rows-[minmax(80px,auto)] border-b border-r border-slate-100">
+      <div className="grid grid-cols-7 auto-rows-[minmax(55px,auto)] sm:auto-rows-[minmax(80px,auto)] border-b border-r border-slate-100">
         {daysArray.map((day, idx) => {
           if (day === null) {
             return <div key={idx} className="bg-slate-50/50 border-l border-t border-slate-100"></div>;
@@ -116,18 +116,16 @@ export const CustomCalendar: React.FC<CustomCalendarProps> = ({
           const isToday = new Date().toDateString() === new Date(year, month, day).toDateString();
 
           return (
-            <div 
-              key={idx} 
-              className={`p-2 border-l border-t border-slate-100 flex flex-col justify-between hover:bg-slate-50/30 transition-colors ${
-                isToday ? 'bg-indigo-50/20' : ''
-              }`}
+            <div
+              key={idx}
+              className={`p-1 sm:p-2 border-l border-t border-slate-100 flex flex-col justify-between hover:bg-slate-50/30 transition-colors ${isToday ? 'bg-indigo-50/20' : ''
+                }`}
             >
               <div className="flex justify-between items-center mb-1">
-                <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md ${
-                  isToday 
-                    ? 'bg-indigo-600 text-white shadow-sm' 
+                <span className={`text-xs font-bold px-1.5 py-0.5 rounded-md ${isToday
+                    ? 'bg-indigo-600 text-white shadow-sm'
                     : 'text-slate-600'
-                }`}>
+                  }`}>
                   {day}
                 </span>
               </div>
@@ -137,11 +135,10 @@ export const CustomCalendar: React.FC<CustomCalendarProps> = ({
                   <div
                     key={item.id}
                     onClick={() => onEventClick(item.id!)}
-                    className={`text-[10px] font-semibold p-1 rounded border truncate cursor-pointer transition-all ${
-                      item.estado === 'completada'
+                    className={`text-[10px] font-semibold p-1 rounded border truncate cursor-pointer transition-all ${item.estado === 'completada'
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
                         : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-                    }`}
+                      }`}
                     title={`${item.tipo === 'reunion' ? '🤝' : item.tipo === 'llamada' ? '📞' : item.tipo === 'email' ? '✉️' : '🏢'} ${item.asunto}`}
                   >
                     {item.tipo === 'reunion' ? '🤝' : item.tipo === 'llamada' ? '📞' : item.tipo === 'email' ? '✉️' : '🏢'} {item.asunto}
@@ -154,11 +151,10 @@ export const CustomCalendar: React.FC<CustomCalendarProps> = ({
                     <div
                       key={item.id + '_deadline'}
                       onClick={() => onEventClick(item.id!)}
-                      className={`text-[10px] font-bold p-1 rounded border truncate cursor-pointer transition-all ${
-                        isOverdue
+                      className={`text-[10px] font-bold p-1 rounded border truncate cursor-pointer transition-all ${isOverdue
                           ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 animate-pulse'
                           : 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
-                      }`}
+                        }`}
                       title={`⏰ Límite: ${item.asunto}`}
                     >
                       ⏰ {item.asunto}
