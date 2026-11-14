@@ -123,7 +123,7 @@ export default function App() {
   const [creatingEmpresaInitial, setCreatingEmpresaInitial] = useState<Empresa | null>(null);
   const [isCreatingContacto, setIsCreatingContacto] = useState(false);
   const [creatingContactoInitial, setCreatingContactoInitial] = useState<Contacto | null>(null);
-  const [showAddInteractionModal, setShowAddInteractionModal] = useState(false);
+  const [isCreatingInteraccion, setIsCreatingInteraccion] = useState(false);
   const [showAddRelacionModal, setShowAddRelacionModal] = useState(false);
 
   const [mainUnspscSearch, setMainUnspscSearch] = useState('');
@@ -174,14 +174,6 @@ export default function App() {
 
     return () => clearTimeout(delayDebounce);
   }, [mainUnspscSearch]);
-
-  const [newInteraccion, setNewInteraccion] = useState<Partial<Interaccion>>({
-    asunto: '', tipo: 'reunion', fecha: new Date().toISOString().slice(0, 10), fechaLimite: null, descripcion: '', estado: 'pendiente', resolucion: ''
-  });
-
-  // Selected contacts/companies for new interaction
-  const [selectedInterContacts, setSelectedInterContacts] = useState<string[]>([]);
-  const [selectedInterCompanies, setSelectedInterCompanies] = useState<string[]>([]);
 
   // Open / Close alerts modal
   const [showAlertsModal, setShowAlertsModal] = useState(false);
@@ -819,26 +811,17 @@ export default function App() {
     return newId;
   };
 
-  // Add Interaction Submit
-  const handleAddInteractionSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newInteraccion.asunto || selectedInterContacts.length === 0) return;
-    
-    const finalInteraction = {
-      ...newInteraccion,
-      contactoId: selectedInterContacts[0],
-      contactoIds: selectedInterContacts,
-      empresaIds: selectedInterCompanies,
-      pasos: []
-    };
+  // Create Interaction — open full modal in creation mode
+  const handleOpenCreateInteraccion = () => {
+    setIsCreatingInteraccion(true);
+    setSelectedInterId(null);
+  };
 
-    await saveDocument('interacciones', finalInteraction);
-    setShowAddInteractionModal(false);
-    setSelectedInterContacts([]);
-    setSelectedInterCompanies([]);
-    setNewInteraccion({
-      asunto: '', tipo: 'reunion', fecha: new Date().toISOString().slice(0, 10), fechaLimite: null, descripcion: '', estado: 'pendiente', resolucion: ''
-    });
+  const handleCreateInteraccion = async (interData: Omit<Interaccion, 'id'>) => {
+    const newId = await saveDocument('interacciones', interData);
+    setIsCreatingInteraccion(false);
+    if (newId) handleOpenInteraccion(newId as string);
+    return newId as string | undefined;
   };
 
   // Export & Import Helpers
@@ -1527,7 +1510,7 @@ export default function App() {
                   onClick={() => {
                     if (currentTab === 'empresas') handleOpenCreateEmpresa();
                     if (currentTab === 'contactos') handleOpenCreateContacto();
-                    if (currentTab === 'interacciones') setShowAddInteractionModal(true);
+                    if (currentTab === 'interacciones') handleOpenCreateInteraccion();
                   }}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl shadow-md shadow-indigo-100 flex items-center gap-1.5 transition-all cursor-pointer flex-shrink-0"
                 >
@@ -2305,7 +2288,10 @@ export default function App() {
           setIsCreatingContacto(false);
           setCreatingContactoInitial(null);
         }}
-        onCloseInteraccion={() => setSelectedInterId(null)}
+        onCloseInteraccion={() => {
+          setSelectedInterId(null);
+          setIsCreatingInteraccion(false);
+        }}
         onOpenContacto={(id) => handleOpenContacto(id)}
         onOpenInteraccion={(id) => handleOpenInteraccion(id)}
         onOpenEmpresa={(id) => handleOpenEmpresa(id)}
@@ -2315,6 +2301,8 @@ export default function App() {
         isCreatingContacto={isCreatingContacto}
         onCreateContacto={handleCreateContacto}
         onOpenCreateContacto={handleOpenCreateContacto}
+        isCreatingInteraccion={isCreatingInteraccion}
+        onCreateInteraccion={handleCreateInteraccion}
         empresas={empresas}
         contactos={contactos}
         interacciones={interacciones}
@@ -2782,122 +2770,6 @@ export default function App() {
         </div>
       )}
 
-
-      {/* Add Interaction Modal */}
-      {showAddInteractionModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="w-full max-w-lg bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col border border-slate-100">
-            <div className="p-5 bg-slate-900 text-white flex items-center justify-between">
-              <h3 className="font-bold text-lg text-slate-100">Nuevo Registro de Interacción</h3>
-              <button onClick={() => setShowAddInteractionModal(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <form onSubmit={handleAddInteractionSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase">Asunto *</label>
-                <input 
-                  type="text" required
-                  value={newInteraccion.asunto}
-                  onChange={(e) => setNewInteraccion({...newInteraccion, asunto: e.target.value})}
-                  className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none"
-                />
-              </div>
-
-              {/* Multi-Contact select */}
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Contacto Participante *</label>
-                <SearchSelect 
-                  required
-                  placeholder="Escribe para buscar un contacto..."
-                  value={selectedInterContacts[0] || ''}
-                  onChange={(val) => {
-                    if (val) {
-                      setSelectedInterContacts([val]);
-                      const cont = contactos.find(c => c.id === val);
-                      if (cont?.empresaId) setSelectedInterCompanies([cont.empresaId]);
-                    } else {
-                      setSelectedInterContacts([]);
-                      setSelectedInterCompanies([]);
-                    }
-                  }}
-                  options={contactos.map(c => {
-                    const empName = empresas.find(e => e.id === c.empresaId)?.nombre || 'Sin empresa';
-                    return { value: c.id!, label: c.nombre, sublabel: empName };
-                  })}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Tipo</label>
-                  <select 
-                    value={newInteraccion.tipo}
-                    onChange={(e) => setNewInteraccion({...newInteraccion, tipo: e.target.value as any})}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="reunion">🤝 Reunión</option>
-                    <option value="llamada">📞 Llamada</option>
-                    <option value="email">✉️ Correo</option>
-                    <option value="feria">🏢 Feria</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Fecha</label>
-                  <input 
-                    type="date" required
-                    value={newInteraccion.fecha}
-                    onChange={(e) => setNewInteraccion({...newInteraccion, fecha: e.target.value})}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-xs outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase">⏰ Límite de Resolución (Opcional)</label>
-                  <input 
-                    type="date"
-                    value={newInteraccion.fechaLimite || ''}
-                    onChange={(e) => setNewInteraccion({...newInteraccion, fechaLimite: e.target.value || null})}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-xs outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase">Estado inicial</label>
-                  <select 
-                    value={newInteraccion.estado}
-                    onChange={(e) => setNewInteraccion({...newInteraccion, estado: e.target.value as any})}
-                    className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="pendiente">⏳ Pendiente</option>
-                    <option value="completada">✅ Completada</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase">Descripción o Acta rápida</label>
-                <textarea 
-                  value={newInteraccion.descripcion}
-                  onChange={(e) => setNewInteraccion({...newInteraccion, descripcion: e.target.value})}
-                  rows={3}
-                  className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all resize-none"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-                <button type="button" onClick={() => setShowAddInteractionModal(false)} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer">
-                  Cancelar
-                </button>
-                <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg cursor-pointer">
-                  Guardar Registro
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* Manual Pin Location Map Modal */}
       {pinningEmpresa && (

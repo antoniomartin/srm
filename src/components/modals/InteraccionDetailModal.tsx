@@ -25,6 +25,9 @@ export interface InteraccionDetailModalProps {
     confirmLabel?: string,
     cancelLabel?: string
   ) => void;
+  // Creation mode
+  isCreating?: boolean;
+  onCreateInteraccion?: (inter: Omit<Interaccion, 'id'>) => Promise<string | undefined>;
 }
 
 const obtenerFechaLimiteDefecto = (pasos?: PasoInteraccion[]) => {
@@ -46,6 +49,8 @@ export const InteraccionDetailModal: React.FC<InteraccionDetailModalProps> = ({
   onOpenContacto,
   onOpenEmpresa,
   askConfirmation,
+  isCreating,
+  onCreateInteraccion,
 }) => {
   // Local buffering for textareas to prevent typing lag
   const [localDescripcion, setLocalDescripcion] = useState('');
@@ -60,17 +65,338 @@ export const InteraccionDetailModal: React.FC<InteraccionDetailModalProps> = ({
   const [newStepText, setNewStepText] = useState('');
   const [newStepDate, setNewStepDate] = useState(new Date().toISOString().slice(0, 10));
 
+  // Creation mode local draft state
+  const [draftAsunto, setDraftAsunto] = useState('');
+  const [draftTipo, setDraftTipo] = useState<string>('reunion');
+  const [draftFecha, setDraftFecha] = useState(new Date().toISOString().slice(0, 10));
+  const [draftEstado, setDraftEstado] = useState<string>('pendiente');
+  const [draftFechaLimite, setDraftFechaLimite] = useState('');
+  const [draftContactoIds, setDraftContactoIds] = useState<string[]>([]);
+  const [draftPasos, setDraftPasos] = useState<PasoInteraccion[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => {
-    if (selectedInteraccion) {
+    if (isCreating) {
+      // Reset draft fields when opening creation mode
+      setDraftAsunto('');
+      setDraftTipo('reunion');
+      setDraftFecha(new Date().toISOString().slice(0, 10));
+      setDraftEstado('pendiente');
+      setDraftFechaLimite('');
+      setDraftContactoIds([]);
+      setDraftPasos([]);
+      setLocalDescripcion('');
+      setLocalResolucion('');
+    } else if (selectedInteraccion) {
       setLocalDescripcion(selectedInteraccion.descripcion || '');
       setLocalResolucion(selectedInteraccion.resolucion || '');
     } else {
       setLocalDescripcion('');
       setLocalResolucion('');
     }
-  }, [selectedInteraccion?.id]);
+  }, [isCreating, selectedInteraccion?.id]);
 
-  if (!selectedInteraccion) return null;
+  if (!isCreating && !selectedInteraccion) return null;
+
+  // ── CREATION MODE ─────────────────────────────────────────────────────────
+  if (isCreating) {
+    const draftParticipantesList = contactos.filter(
+      (c) => c.id && draftContactoIds.includes(c.id)
+    );
+
+    const handleCreate = async () => {
+      if (!draftAsunto.trim()) return;
+      if (!onCreateInteraccion) return;
+      setIsSaving(true);
+      try {
+        const empresaIds = Array.from(
+          new Set(
+            contactos
+              .filter((c) => c.id && draftContactoIds.includes(c.id))
+              .map((c) => c.empresaId)
+              .filter(Boolean) as string[]
+          )
+        );
+        await onCreateInteraccion({
+          asunto: draftAsunto.trim(),
+          tipo: draftTipo,
+          fecha: draftFecha,
+          fechaLimite: draftFechaLimite || null,
+          descripcion: localDescripcion,
+          estado: draftEstado,
+          resolucion: localResolucion,
+          contactoId: draftContactoIds[0] || '',
+          contactoIds: draftContactoIds,
+          empresaIds,
+          pasos: draftPasos,
+          fecha_creacion: new Date().toISOString(),
+        });
+      } finally {
+        setIsSaving(false);
+      }
+    };
+
+    return (
+      <div
+        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-6 transition-all duration-300"
+        onClick={onClose}
+      >
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[88vh] border border-slate-200 overflow-hidden"
+        >
+          {/* Header creación */}
+          <div className="p-6 bg-amber-600 text-white flex items-start justify-between">
+            <div className="flex-1 mr-4">
+              <span className="text-xs font-bold text-amber-200 uppercase tracking-widest">
+                Nueva Interacción
+              </span>
+              <div className="flex flex-wrap gap-3 mt-2">
+                <select
+                  value={draftTipo}
+                  onChange={(e) => setDraftTipo(e.target.value)}
+                  className="bg-amber-700/50 border border-amber-400 text-white rounded-lg py-1.5 px-3 text-sm font-semibold outline-none focus:border-amber-200 cursor-pointer"
+                >
+                  <option value="reunion">Reunión</option>
+                  <option value="llamada">Llamada</option>
+                  <option value="email">Email</option>
+                  <option value="visita">Visita</option>
+                  <option value="otro">Otro</option>
+                </select>
+                <select
+                  value={draftEstado}
+                  onChange={(e) => setDraftEstado(e.target.value)}
+                  className="bg-amber-700/50 border border-amber-400 text-white rounded-lg py-1.5 px-3 text-sm font-semibold outline-none focus:border-amber-200 cursor-pointer"
+                >
+                  <option value="pendiente">Pendiente</option>
+                  <option value="completada">Completada</option>
+                </select>
+                <input
+                  type="date"
+                  value={draftFecha}
+                  onChange={(e) => setDraftFecha(e.target.value)}
+                  className="bg-amber-700/50 border border-amber-400 text-white rounded-lg py-1.5 px-3 text-sm font-semibold outline-none focus:border-amber-200"
+                />
+              </div>
+              <input
+                type="text"
+                value={draftAsunto}
+                onChange={(e) => setDraftAsunto(e.target.value)}
+                placeholder="Asunto de la interacción..."
+                className="mt-3 w-full bg-amber-700/40 border border-amber-400 text-white placeholder-amber-200 rounded-lg py-2 px-3 text-xl font-bold outline-none focus:border-amber-100"
+                autoFocus
+              />
+            </div>
+            <button
+              onClick={onClose}
+              className="p-2 text-amber-100 hover:text-white rounded-lg hover:bg-amber-700 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Body creación */}
+          <div className="p-6 space-y-6 flex-1 overflow-y-auto">
+            <div className="space-y-4">
+              {/* Descripción */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase">
+                  Detalle o Minuta de la Interacción
+                </label>
+                <textarea
+                  value={localDescripcion}
+                  onChange={(e) => setLocalDescripcion(e.target.value)}
+                  rows={4}
+                  className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                />
+              </div>
+
+              {/* Fecha límite */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase">
+                  ⏰ Fecha Límite de Resolución
+                </label>
+                <input
+                  type="date"
+                  value={draftFechaLimite}
+                  onChange={(e) => setDraftFechaLimite(e.target.value)}
+                  className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
+                />
+              </div>
+
+              {/* Resolución */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase">
+                  Resolución / Conclusión final
+                </label>
+                <textarea
+                  value={localResolucion}
+                  onChange={(e) => setLocalResolucion(e.target.value)}
+                  rows={2}
+                  placeholder="Borrador de resolución..."
+                  className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all"
+                />
+              </div>
+
+              {/* Participantes */}
+              <div className="border-t border-slate-100 pt-4 mt-2">
+                <h4 className="font-bold text-slate-800 text-xs uppercase mb-3 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">👥 Personas que Intervinieron</span>
+                </h4>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    {draftParticipantesList.length === 0 ? (
+                      <p className="text-xs text-slate-500 italic">No hay participantes todavía.</p>
+                    ) : (
+                      draftParticipantesList.map((cont) => {
+                        const empresaPrincipal = empresas.find((e) => e.id === cont.empresaId);
+                        return (
+                          <div
+                            key={cont.id}
+                            className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50/50"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">
+                                {cont.nombre.charAt(0).toUpperCase()}
+                              </div>
+                              <div>
+                                <p className="font-semibold text-slate-800 text-xs sm:text-sm">{cont.nombre}</p>
+                                <p className="text-[11px] text-slate-500">
+                                  {empresaPrincipal?.nombre || 'Sin empresa'}
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setDraftContactoIds((prev) => prev.filter((id) => id !== cont.id))
+                              }
+                              className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors"
+                              title="Quitar participante"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-2 mt-2 bg-slate-50/50 p-2 rounded-xl border border-slate-150">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase ml-1">Añadir participante:</label>
+                    <SearchSelect
+                      placeholder="Escribe para buscar y añadir participante..."
+                      value=""
+                      onChange={(val) => {
+                        if (!val || draftContactoIds.includes(val)) return;
+                        setDraftContactoIds((prev) => [...prev, val]);
+                      }}
+                      options={contactos
+                        .filter((c) => !draftContactoIds.includes(c.id!))
+                        .map((c) => {
+                          const empName = empresas.find((e) => e.id === c.empresaId)?.nombre || 'Sin empresa';
+                          return { value: c.id!, label: c.nombre, sublabel: empName };
+                        })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Pasos */}
+              <div>
+                <h4 className="font-bold text-slate-800 text-sm border-b border-slate-100 pb-2 mb-3">
+                  📋 Plan de Pasos & Compromisos
+                </h4>
+                <div className="space-y-2">
+                  {draftPasos.map((paso, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between p-3 rounded-lg border border-slate-100 bg-slate-50 gap-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={paso.completado || false}
+                          onChange={(e) => {
+                            const updated = [...draftPasos];
+                            updated[idx] = { ...paso, completado: e.target.checked };
+                            setDraftPasos(updated);
+                          }}
+                          className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
+                        />
+                        <span className="text-sm text-slate-700">{paso.texto}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] font-bold text-slate-400 bg-white border border-slate-200 px-2 py-0.5 rounded">
+                          {paso.fecha}
+                        </span>
+                        <button
+                          onClick={() =>
+                            setDraftPasos((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {/* Add new step inline */}
+                  <div className="flex items-center gap-2 mt-3">
+                    <input
+                      type="text"
+                      value={newStepText}
+                      onChange={(e) => setNewStepText(e.target.value)}
+                      placeholder="Compromiso o paso a realizar..."
+                      className="flex-1 bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs outline-none focus:border-indigo-500 transition-all"
+                    />
+                    <input
+                      type="date"
+                      value={newStepDate}
+                      onChange={(e) => setNewStepDate(e.target.value)}
+                      className="bg-white border border-slate-200 rounded-lg py-1.5 px-3 text-xs outline-none"
+                    />
+                    <button
+                      onClick={() => {
+                        if (newStepText.trim()) {
+                          setDraftPasos((prev) => [
+                            ...prev,
+                            { texto: newStepText.trim(), fecha: newStepDate, completado: false },
+                          ]);
+                          setNewStepText('');
+                        }
+                      }}
+                      className="p-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm cursor-pointer"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer creación */}
+          <div className="p-6 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-3">
+            <button
+              onClick={onClose}
+              className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-50 transition-colors shadow-sm text-sm cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleCreate}
+              disabled={!draftAsunto.trim() || isSaving}
+              className="px-6 py-2.5 bg-amber-600 text-white font-bold rounded-lg hover:bg-amber-700 transition-colors shadow-sm text-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSaving ? 'Guardando...' : '✓ Crear Interacción'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  // ── END CREATION MODE ──────────────────────────────────────────────────────
 
   const actualizarInteraccion = (campos: Partial<Interaccion>) => {
     onUpdateInteraccion({

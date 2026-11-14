@@ -61,6 +61,10 @@ export interface FichasModalesProps {
   isCreatingContacto?: boolean;
   onCreateContacto?: (contacto: Omit<Contacto, 'id'>) => Promise<string | undefined>;
   onOpenCreateContacto?: (empresaId?: string) => void;
+
+  // Interaction creation
+  isCreatingInteraccion?: boolean;
+  onCreateInteraccion?: (inter: Omit<Interaccion, 'id'>) => Promise<string | undefined>;
 }
 
 export const FichasModales: React.FC<FichasModalesProps> = ({
@@ -79,6 +83,8 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
   isCreatingContacto,
   onCreateContacto,
   onOpenCreateContacto,
+  isCreatingInteraccion,
+  onCreateInteraccion,
   empresas,
   contactos,
   interacciones,
@@ -188,6 +194,8 @@ export const FichasModales: React.FC<FichasModalesProps> = ({
         onOpenContacto={onOpenContacto}
         onOpenEmpresa={onOpenEmpresa}
         askConfirmation={askConfirmation}
+        isCreating={isCreatingInteraccion}
+        onCreateInteraccion={onCreateInteraccion}
       />
 
       <ConfirmDialog state={confirmState} onClose={closeConfirmation} />
