@@ -2140,17 +2140,16 @@ export default function App() {
               </div>
             )}
 
-            {currentTab === 'mapa' && (
-              <div className="space-y-4">
-                <LeafletMap 
-                  empresas={empresas}
-                  onOpenFicha={(id) => handleOpenEmpresa(id)}
-                  selectedTipo={mapTipoFilter}
-                  selectedEstado={mapEstadoFilter}
-                  scores={scores}
-                />
-              </div>
-            )}
+            <div className={`space-y-4 ${currentTab === 'mapa' ? 'block' : 'hidden'}`}>
+              <LeafletMap 
+                empresas={empresas}
+                onOpenFicha={(id) => handleOpenEmpresa(id)}
+                selectedTipo={mapTipoFilter}
+                selectedEstado={mapEstadoFilter}
+                scores={scores}
+                isVisible={currentTab === 'mapa'}
+              />
+            </div>
 
             {currentTab === 'etiquetas' && (
               <div className="space-y-6">

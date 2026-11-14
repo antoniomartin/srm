@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Map, MapPin, Loader2, Navigation, Maximize2, RotateCcw, Building2, Truck } from 'lucide-react';
 import { Empresa } from '../types';
 
@@ -13,6 +13,7 @@ interface LeafletMapProps {
   selectedTipo: string;
   selectedEstado: string;
   scores: { [id: string]: { nivel: string; label: string; dias: number | null } };
+  isVisible?: boolean;
 }
 
 // In-memory cache for address geocoding
@@ -24,6 +25,7 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
   selectedTipo,
   selectedEstado,
   scores,
+  isVisible = true,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -32,6 +34,27 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [geocodedCount, setGeocodedCount] = useState(0);
+
+  const onOpenFichaRef = useRef(onOpenFicha);
+  useEffect(() => {
+    onOpenFichaRef.current = onOpenFicha;
+  }, [onOpenFicha]);
+
+  const initialFitDoneRef = useRef(false);
+  const lastPlottedFingerprintRef = useRef('');
+  const lastFilterKeyRef = useRef('');
+
+  // When container visibility changes (e.g. switching back to map tab), recalculate size
+  useEffect(() => {
+    if (isVisible && mapRef.current) {
+      const timer = setTimeout(() => {
+        if (mapRef.current) {
+          mapRef.current.invalidateSize();
+        }
+      }, 80);
+      return () => clearTimeout(timer);
+    }
+  }, [isVisible]);
 
   // 1. Dynamically Load Leaflet Assets
   useEffect(() => {
@@ -106,17 +129,19 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
         zoomControl: true,
       }).setView([40.416775, -3.70379], 6);
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-        maxZoom: 19,
+      // CartoDB Voyager tiles: clean, fast, modern SaaS aesthetic
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20,
       }).addTo(mapRef.current);
     }
 
     const map = mapRef.current;
 
-    // Clear old markers
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
+    const filterKey = `${selectedTipo}_${selectedEstado}`;
+    const filterChanged = lastFilterKeyRef.current !== filterKey;
+    lastFilterKeyRef.current = filterKey;
 
     // Filter companies
     const filtered = empresas.filter((e) => {
@@ -124,6 +149,23 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
       const matchesEstado = selectedEstado === 'todos' || e.estado === selectedEstado;
       return matchesTipo && matchesEstado;
     });
+
+    const currentFingerprint = filtered
+      .map(
+        (e) =>
+          `${e.id}_${e._lat}_${e._lon}_${e.tipo}_${e.estado}_${e.direccion || ''}_${e.ciudad || ''}_${scores[e.id || '']?.nivel || ''}`
+      )
+      .join('|');
+
+    // If neither filter nor relevant company data changed, keep existing markers and camera!
+    if (!filterChanged && lastPlottedFingerprintRef.current === currentFingerprint && markersRef.current.length > 0) {
+      return;
+    }
+    lastPlottedFingerprintRef.current = currentFingerprint;
+
+    // Clear old markers
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
 
     const getMarkerTheme = (emp: Empresa) => {
       let bg = '#4f46e5'; // indigo
@@ -284,7 +326,7 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
             if (btn) {
               btn.addEventListener('click', (e) => {
                 e.preventDefault();
-                onOpenFicha(emp.id!);
+                onOpenFichaRef.current(emp.id!);
               });
             }
           });
@@ -303,8 +345,12 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
       );
 
       if (markersRef.current.length > 0) {
-        const group = L.featureGroup(markersRef.current);
-        map.fitBounds(group.getBounds().pad(0.15));
+        // Only fit bounds on initial load or if user actively changed the filter
+        if (!initialFitDoneRef.current || filterChanged) {
+          const group = L.featureGroup(markersRef.current);
+          map.fitBounds(group.getBounds().pad(0.15));
+          initialFitDoneRef.current = true;
+        }
       }
     };
 
@@ -313,7 +359,7 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
     return () => {
       cancels = true;
     };
-  }, [isLeafletLoaded, empresas, selectedTipo, selectedEstado, scores, onOpenFicha]);
+  }, [isLeafletLoaded, empresas, selectedTipo, selectedEstado, scores]);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs flex flex-col transition-all">
