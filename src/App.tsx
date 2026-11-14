@@ -2358,14 +2358,14 @@ export default function App() {
       {/* Calendar Modal Overlay */}
       {showCalendarModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-5xl bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col">
+          <div className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col">
             {/* Header */}
             <div className="p-4 sm:p-5 bg-indigo-600 text-white flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <Calendar className="w-5 h-5" />
                 <div>
                   <h3 className="font-bold text-base text-white">Calendario de Interacciones</h3>
-                  <p className="text-xs text-indigo-100 font-medium">Visualiza de forma mensual las reuniones, llamadas y tareas programadas con tus proveedores</p>
+                  <p className="text-xs text-indigo-100 font-medium">Visualiza de forma mensual, semanal o diaria las reuniones, pasos y compromisos con tus proveedores</p>
                 </div>
               </div>
               <button 
