@@ -44,6 +44,15 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
   const lastPlottedFingerprintRef = useRef('');
   const lastFilterKeyRef = useRef('');
 
+  // Delay map initialization until the map tab is actually viewed by the user for the first time
+  const [hasBeenVisible, setHasBeenVisible] = useState(isVisible);
+
+  useEffect(() => {
+    if (isVisible && !hasBeenVisible) {
+      setHasBeenVisible(true);
+    }
+  }, [isVisible, hasBeenVisible]);
+
   // When container visibility changes (e.g. switching back to map tab), recalculate size
   useEffect(() => {
     if (isVisible && mapRef.current) {
@@ -51,7 +60,7 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
         if (mapRef.current) {
           mapRef.current.invalidateSize();
         }
-      }, 80);
+      }, 100);
       return () => clearTimeout(timer);
     }
   }, [isVisible]);
@@ -118,7 +127,7 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
 
   // 3. Initialize Map and Plot Markers
   useEffect(() => {
-    if (!isLeafletLoaded || !mapContainerRef.current) return;
+    if (!isLeafletLoaded || !mapContainerRef.current || !hasBeenVisible) return;
 
     const L = (window as any).L;
     if (!L) return;
@@ -129,11 +138,10 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
         zoomControl: true,
       }).setView([40.416775, -3.70379], 6);
 
-      // CartoDB Voyager tiles: clean, fast, modern SaaS aesthetic
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-        subdomains: 'abcd',
-        maxZoom: 20,
+      // OpenStreetMap tiles: 100% Free, public and reliable, NO API KEY needed
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+        maxZoom: 19,
       }).addTo(mapRef.current);
     }
 
@@ -359,7 +367,7 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
     return () => {
       cancels = true;
     };
-  }, [isLeafletLoaded, empresas, selectedTipo, selectedEstado, scores]);
+  }, [isLeafletLoaded, hasBeenVisible, empresas, selectedTipo, selectedEstado, scores]);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs flex flex-col transition-all">
