@@ -898,16 +898,20 @@ export default function App() {
           message: `Importando proveedor (${step}/${parsed.empresas.length}): ${empRow.nombre}`
         });
 
+        const cleanId = (empRow.id || '').trim();
         const cleanNombre = empRow.nombre.trim();
         const cleanNit = (empRow.nit || '').trim();
 
-        // Check for duplicate by NIT or trimmed lower-case name
-        const existing = empresas.find(e => {
-          if (cleanNit && cleanNit.length >= 3 && e.nit && e.nit.trim().toLowerCase() === cleanNit.toLowerCase()) {
-            return true;
-          }
-          return e.nombre.trim().toLowerCase() === cleanNombre.toLowerCase();
-        });
+        // Check for duplicate: prioritize matching by unique ID, then fallback to NIT or Name
+        let existing = cleanId ? empresas.find(e => e.id === cleanId) : undefined;
+        if (!existing) {
+          existing = empresas.find(e => {
+            if (cleanNit && cleanNit.length >= 3 && e.nit && e.nit.trim().toLowerCase() === cleanNit.toLowerCase()) {
+              return true;
+            }
+            return e.nombre.trim().toLowerCase() === cleanNombre.toLowerCase();
+          });
+        }
 
         if (existing && existing.id) {
           // Merge non-empty data without overwriting good values with blanks
@@ -933,6 +937,7 @@ export default function App() {
 
           await saveDocument('empresas', updatedData, existing.id);
           nameToIdMap.set(cleanNombre.toLowerCase(), existing.id);
+          if (cleanId) nameToIdMap.set(cleanId.toLowerCase(), existing.id);
           empresasActualizadas++;
         } else {
           // Create new record
@@ -961,6 +966,7 @@ export default function App() {
           const newId = await saveDocument('empresas', newEmpresaData);
           if (newId) {
             nameToIdMap.set(cleanNombre.toLowerCase(), newId);
+            if (cleanId) nameToIdMap.set(cleanId.toLowerCase(), newId);
             empresasCreadas++;
           }
         }
@@ -988,9 +994,13 @@ export default function App() {
           message: `Importando contacto: ${contRow.nombre}`
         });
 
+        const cleanContId = (contRow.id || '').trim();
         const cleanContNombre = contRow.nombre.trim();
-        let targetEmpresaId = '';
-        if (contRow.empresaNombre) {
+        let targetEmpresaId = (contRow.empresaId || '').trim();
+        if (targetEmpresaId && !empresas.some(e => e.id === targetEmpresaId)) {
+          targetEmpresaId = nameToIdMap.get(targetEmpresaId.toLowerCase()) || targetEmpresaId;
+        }
+        if (!targetEmpresaId && contRow.empresaNombre) {
           targetEmpresaId = nameToIdMap.get(contRow.empresaNombre.trim().toLowerCase()) || '';
           if (!targetEmpresaId) {
             const foundEmp = empresas.find(e => e.nombre.trim().toLowerCase() === contRow.empresaNombre!.trim().toLowerCase());
@@ -998,12 +1008,16 @@ export default function App() {
           }
         }
 
-        const existingContact = contactos.find(c => {
-          if (contRow.email && contRow.email.trim() && c.email && c.email.trim().toLowerCase() === contRow.email.trim().toLowerCase()) {
-            return true;
-          }
-          return c.nombre.trim().toLowerCase() === cleanContNombre.toLowerCase() && (targetEmpresaId ? c.empresaId === targetEmpresaId : true);
-        });
+        // Check for duplicate: prioritize matching by ID first, then fallback to Email or Name+Empresa
+        let existingContact = cleanContId ? contactos.find(c => c.id === cleanContId) : undefined;
+        if (!existingContact) {
+          existingContact = contactos.find(c => {
+            if (contRow.email && contRow.email.trim() && c.email && c.email.trim().toLowerCase() === contRow.email.trim().toLowerCase()) {
+              return true;
+            }
+            return c.nombre.trim().toLowerCase() === cleanContNombre.toLowerCase() && (targetEmpresaId ? c.empresaId === targetEmpresaId : true);
+          });
+        }
 
         if (existingContact && existingContact.id) {
           const updatedContact: Partial<Contacto> = {
@@ -1019,6 +1033,7 @@ export default function App() {
           };
           await saveDocument('contactos', updatedContact, existingContact.id);
           contactNameToIdMap.set(cleanContNombre.toLowerCase(), existingContact.id);
+          if (cleanContId) contactNameToIdMap.set(cleanContId.toLowerCase(), existingContact.id);
           const empIdToUse = targetEmpresaId || existingContact.empresaId;
           if (empIdToUse) {
             contactNameAndEmpToIdMap.set(`${cleanContNombre.toLowerCase()}:::${empIdToUse}`, existingContact.id);
@@ -1044,6 +1059,7 @@ export default function App() {
           const newContId = await saveDocument('contactos', newContact);
           if (newContId) {
             contactNameToIdMap.set(cleanContNombre.toLowerCase(), newContId);
+            if (cleanContId) contactNameToIdMap.set(cleanContId.toLowerCase(), newContId);
             if (targetEmpresaId) {
               contactNameAndEmpToIdMap.set(`${cleanContNombre.toLowerCase()}:::${targetEmpresaId}`, newContId);
             }
@@ -1054,11 +1070,12 @@ export default function App() {
 
       // 2.1 Vincular Dependencias Jerárquicas (reportaA / Organigrama)
       for (const contRow of parsed.contactos) {
-        if (!contRow.reportaA || !contRow.reportaA.trim()) continue;
+        if (!contRow.reportaA && !contRow.reportaAId) continue;
 
+        const cleanContId = (contRow.id || '').trim();
         const cleanContNombre = contRow.nombre.trim();
-        let targetEmpresaId = '';
-        if (contRow.empresaNombre) {
+        let targetEmpresaId = (contRow.empresaId || '').trim();
+        if (!targetEmpresaId && contRow.empresaNombre) {
           targetEmpresaId = nameToIdMap.get(contRow.empresaNombre.trim().toLowerCase()) || '';
           if (!targetEmpresaId) {
             const foundEmp = empresas.find(e => e.nombre.trim().toLowerCase() === contRow.empresaNombre!.trim().toLowerCase());
@@ -1066,15 +1083,21 @@ export default function App() {
           }
         }
 
-        const contactId = (targetEmpresaId ? contactNameAndEmpToIdMap.get(`${cleanContNombre.toLowerCase()}:::${targetEmpresaId}`) : undefined) ||
+        const contactId = (cleanContId ? contactNameToIdMap.get(cleanContId.toLowerCase()) : undefined) ||
+          (targetEmpresaId ? contactNameAndEmpToIdMap.get(`${cleanContNombre.toLowerCase()}:::${targetEmpresaId}`) : undefined) ||
           contactNameToIdMap.get(cleanContNombre.toLowerCase());
 
         if (!contactId) continue;
 
-        const cleanSupervisorNombre = contRow.reportaA.trim().toLowerCase();
-        // Buscar al superior priorizando la misma empresa
-        const supervisorId = (targetEmpresaId ? contactNameAndEmpToIdMap.get(`${cleanSupervisorNombre}:::${targetEmpresaId}`) : undefined) ||
-          contactNameToIdMap.get(cleanSupervisorNombre);
+        let supervisorId = (contRow.reportaAId || '').trim();
+        if (supervisorId && !contactos.some(c => c.id === supervisorId)) {
+          supervisorId = contactNameToIdMap.get(supervisorId.toLowerCase()) || supervisorId;
+        }
+        if (!supervisorId && contRow.reportaA) {
+          const cleanSupervisorNombre = contRow.reportaA.trim().toLowerCase();
+          supervisorId = (targetEmpresaId ? contactNameAndEmpToIdMap.get(`${cleanSupervisorNombre}:::${targetEmpresaId}`) : undefined) ||
+            contactNameToIdMap.get(cleanSupervisorNombre) || '';
+        }
 
         if (supervisorId && supervisorId !== contactId) {
           await saveDocument('contactos', { reportaA: supervisorId }, contactId);
@@ -1093,52 +1116,63 @@ export default function App() {
           message: `Importando interacción: ${interRow.asunto}`
         });
 
-        const matchedEmpresaIds = interRow.empresasNombres
+        const cleanInterId = (interRow.id || '').trim();
+
+        const directEmpIds = (interRow.empresaIds || []).map(id => nameToIdMap.get(id.toLowerCase()) || id);
+        const namedEmpIds = interRow.empresasNombres
           .map(name => nameToIdMap.get(name.trim().toLowerCase()))
           .filter(Boolean) as string[];
+        const matchedEmpresaIds = [...new Set([...directEmpIds, ...namedEmpIds])];
 
-        const matchedContactoIds = interRow.contactosNombres
+        const directContIds = (interRow.contactoIds || []).map(id => contactNameToIdMap.get(id.toLowerCase()) || id);
+        const namedContIds = interRow.contactosNombres
           .map(name => contactNameToIdMap.get(name.trim().toLowerCase()) || contactos.find(c => c.nombre.trim().toLowerCase() === name.trim().toLowerCase())?.id)
           .filter(Boolean) as string[];
+        const matchedContactoIds = [...new Set([...directContIds, ...namedContIds])];
 
         const cleanAsunto = interRow.asunto.trim().toLowerCase();
         const cleanFecha = (interRow.fecha || '').trim();
 
-        const existingInter = localInteracciones.find(existing => {
-          const existingAsunto = (existing.asunto || '').trim().toLowerCase();
-          const existingFecha = (existing.fecha || '').trim();
+        // Try to match existing interaction by ID first, then fallback to heuristic matching
+        let existingInter = cleanInterId ? localInteracciones.find(i => i.id === cleanInterId) : undefined;
 
-          // Must have matching asunto and fecha
-          if (existingAsunto !== cleanAsunto || existingFecha !== cleanFecha) {
+        if (!existingInter) {
+          existingInter = localInteracciones.find(existing => {
+            const existingAsunto = (existing.asunto || '').trim().toLowerCase();
+            const existingFecha = (existing.fecha || '').trim();
+
+            // Must have matching asunto and fecha
+            if (existingAsunto !== cleanAsunto || existingFecha !== cleanFecha) {
+              return false;
+            }
+
+            // Check company overlap
+            const existingEmpIds = existing.empresaIds || [];
+            const hasEmpFilter = matchedEmpresaIds.length > 0 && existingEmpIds.length > 0;
+            const empOverlap = hasEmpFilter && existingEmpIds.some(id => matchedEmpresaIds.includes(id));
+
+            // Check contact overlap
+            const existingContIds = existing.contactoIds?.length 
+              ? existing.contactoIds 
+              : (existing.contactoId ? [existing.contactoId] : []);
+            const hasContFilter = matchedContactoIds.length > 0 && existingContIds.length > 0;
+            const contOverlap = hasContFilter && existingContIds.some(id => matchedContactoIds.includes(id));
+
+            // If both have company filters and don't overlap, and both have contact filters and don't overlap:
+            if (hasEmpFilter && !empOverlap && !hasContFilter) return false;
+            if (hasContFilter && !contOverlap && !hasEmpFilter) return false;
+            if (hasEmpFilter && hasContFilter && !empOverlap && !contOverlap) return false;
+
+            // If there is an overlap in either company or contact, it's a match!
+            if (empOverlap || contOverlap) return true;
+
+            // If neither has company/contact specified or only one side does:
+            if (existing.tipo === interRow.tipo) return true;
+            if ((existing.descripcion || '').trim().toLowerCase() === (interRow.descripcion || '').trim().toLowerCase()) return true;
+
             return false;
-          }
-
-          // Check company overlap
-          const existingEmpIds = existing.empresaIds || [];
-          const hasEmpFilter = matchedEmpresaIds.length > 0 && existingEmpIds.length > 0;
-          const empOverlap = hasEmpFilter && existingEmpIds.some(id => matchedEmpresaIds.includes(id));
-
-          // Check contact overlap
-          const existingContIds = existing.contactoIds?.length 
-            ? existing.contactoIds 
-            : (existing.contactoId ? [existing.contactoId] : []);
-          const hasContFilter = matchedContactoIds.length > 0 && existingContIds.length > 0;
-          const contOverlap = hasContFilter && existingContIds.some(id => matchedContactoIds.includes(id));
-
-          // If both have company filters and don't overlap, and both have contact filters and don't overlap:
-          if (hasEmpFilter && !empOverlap && !hasContFilter) return false;
-          if (hasContFilter && !contOverlap && !hasEmpFilter) return false;
-          if (hasEmpFilter && hasContFilter && !empOverlap && !contOverlap) return false;
-
-          // If there is an overlap in either company or contact, it's a match!
-          if (empOverlap || contOverlap) return true;
-
-          // If neither has company/contact specified or only one side does:
-          if (existing.tipo === interRow.tipo) return true;
-          if ((existing.descripcion || '').trim().toLowerCase() === (interRow.descripcion || '').trim().toLowerCase()) return true;
-
-          return false;
-        });
+          });
+        }
 
         if (existingInter && existingInter.id) {
           const mergedEmpresaIds = [...new Set([...(existingInter.empresaIds || []), ...matchedEmpresaIds])];
@@ -1201,12 +1235,35 @@ export default function App() {
           message: `Importando relación comercial...`
         });
 
-        const fId = nameToIdMap.get(relRow.fabricanteNombre.trim().toLowerCase());
-        const dId = nameToIdMap.get(relRow.distribuidorNombre.trim().toLowerCase());
+        const cleanRelId = (relRow.id || '').trim();
+        let fId = (relRow.fabricanteId || '').trim();
+        if (fId && !empresas.some(e => e.id === fId)) {
+          fId = nameToIdMap.get(fId.toLowerCase()) || fId;
+        }
+        if (!fId && relRow.fabricanteNombre) {
+          fId = nameToIdMap.get(relRow.fabricanteNombre.trim().toLowerCase()) || '';
+        }
+
+        let dId = (relRow.distribuidorId || '').trim();
+        if (dId && !empresas.some(e => e.id === dId)) {
+          dId = nameToIdMap.get(dId.toLowerCase()) || dId;
+        }
+        if (!dId && relRow.distribuidorNombre) {
+          dId = nameToIdMap.get(relRow.distribuidorNombre.trim().toLowerCase()) || '';
+        }
 
         if (fId && dId && fId !== dId) {
-          const existingRel = relaciones.find(r => r.fabricanteId === fId && r.distribuidorId === dId);
+          let existingRel = cleanRelId ? relaciones.find(r => r.id === cleanRelId) : undefined;
           if (!existingRel) {
+            existingRel = relaciones.find(r => r.fabricanteId === fId && r.distribuidorId === dId);
+          }
+
+          if (existingRel && existingRel.id) {
+            await saveDocument('relaciones', {
+              preferente: relRow.preferente,
+              notas: relRow.notas || existingRel.notas
+            }, existingRel.id);
+          } else {
             await saveDocument('relaciones', {
               fabricanteId: fId,
               distribuidorId: dId,

@@ -7,6 +7,7 @@ import * as XLSX from 'xlsx';
 import { Empresa, Contacto, Interaccion, Relacion, EmpresaTipo, EmpresaEstado, UNSPSC_OPTIONS } from '../types';
 
 export interface ParsedEmpresaRow {
+  id?: string;
   nombre: string;
   tipo: EmpresaTipo;
   estado: EmpresaEstado;
@@ -34,6 +35,9 @@ export interface ParsedEmpresaRow {
 }
 
 export interface ParsedContactoRow {
+  id?: string;
+  empresaId?: string;
+  reportaAId?: string;
   nombre: string;
   empresaNombre?: string;
   cargo: string;
@@ -50,21 +54,27 @@ export interface ParsedContactoRow {
 }
 
 export interface ParsedInteraccionRow {
+  id?: string;
   asunto: string;
   tipo: 'reunion' | 'llamada' | 'email' | 'feria';
   fecha: string;
   fechaLimite?: string;
   estado: 'pendiente' | 'completada';
   contactosNombres: string[];
+  contactoIds?: string[];
   empresasNombres: string[];
+  empresaIds?: string[];
   descripcion: string;
   resolucion: string;
   pasosRaw?: string;
 }
 
 export interface ParsedRelacionRow {
+  id?: string;
   fabricanteNombre: string;
+  fabricanteId?: string;
   distribuidorNombre: string;
+  distribuidorId?: string;
   preferente: 'si' | 'no';
   notas: string;
 }
@@ -222,12 +232,13 @@ export const exportToExcel = (
 
     // 1. Empresas Sheet
     const empresasHeaders = [
-      'Nombre', 'Tipo', 'Estado', 'NIT_CIF', 'Direccion', 'CP', 'Ciudad', 'Provincia', 'Pais',
+      'ID', 'Nombre', 'Tipo', 'Estado', 'NIT_CIF', 'Direccion', 'CP', 'Ciudad', 'Provincia', 'Pais',
       'Telefono', 'Email', 'Web', 'Grupo', 'Tags', 'RolesAdicionales', 'Notas', 'UNSPSC',
       'Evaluacion_Plazos', 'Evaluacion_Calidad', 'Evaluacion_Flexibilidad', 'Evaluacion_Comentarios', 'FechaCreacion'
     ];
 
     const empresasData = empresas.map(e => ({
+      ID: e.id || '',
       Nombre: safeString(e.nombre),
       Tipo: safeString(e.tipo, 'fabricante'),
       Estado: safeString(e.estado, 'prospecto'),
@@ -257,6 +268,7 @@ export const exportToExcel = (
       : XLSX.utils.aoa_to_sheet([empresasHeaders]);
     
     wsEmpresas['!cols'] = [
+      { wch: 24 }, // ID
       { wch: 28 }, // Nombre
       { wch: 15 }, // Tipo
       { wch: 15 }, // Estado
@@ -284,7 +296,7 @@ export const exportToExcel = (
 
     // 2. Contactos Sheet
     const contactosHeaders = [
-      'Nombre', 'EmpresaPrincipal', 'Cargo', 'ReportaA', 'Telefono', 'Email',
+      'ID', 'Nombre', 'EmpresaPrincipal', 'ID_Empresa', 'Cargo', 'ReportaA', 'ID_ReportaA', 'Telefono', 'Email',
       'LinkedIn', 'Estado', 'MotivoInactivo', 'Intereses', 'EmpresasAnteriores', 'DondeSeConocio', 'Notas', 'FechaCreacion'
     ];
 
@@ -292,10 +304,13 @@ export const exportToExcel = (
       const emp = empresas.find(e => e.id === c.empresaId);
       const sup = contactos.find(s => s.id === c.reportaA);
       return {
+        ID: c.id || '',
         Nombre: safeString(c.nombre),
         EmpresaPrincipal: emp?.nombre || '',
+        ID_Empresa: c.empresaId || '',
         Cargo: safeString(c.cargo),
         ReportaA: sup?.nombre || '',
+        ID_ReportaA: c.reportaA || '',
         Telefono: safeString(c.telefono),
         Email: safeString(c.email),
         LinkedIn: safeString(c.linkedin),
@@ -314,10 +329,13 @@ export const exportToExcel = (
       : XLSX.utils.aoa_to_sheet([contactosHeaders]);
 
     wsContactos['!cols'] = [
+      { wch: 24 }, // ID
       { wch: 24 }, // Nombre
       { wch: 25 }, // EmpresaPrincipal
+      { wch: 24 }, // ID_Empresa
       { wch: 22 }, // Cargo
       { wch: 20 }, // ReportaA
+      { wch: 24 }, // ID_ReportaA
       { wch: 16 }, // Telefono
       { wch: 25 }, // Email
       { wch: 25 }, // LinkedIn
@@ -333,7 +351,7 @@ export const exportToExcel = (
 
     // 3. Interacciones Sheet
     const interaccionesHeaders = [
-      'Asunto', 'Tipo', 'Fecha', 'FechaLimite', 'Estado', 'Contactos', 'Empresas', 'Descripcion', 'Resolucion', 'Pasos'
+      'ID', 'Asunto', 'Tipo', 'Fecha', 'FechaLimite', 'Estado', 'Contactos', 'ID_Contactos', 'Empresas', 'ID_Empresas', 'Descripcion', 'Resolucion', 'Pasos'
     ];
 
     const interaccionesData = interacciones.map(i => {
@@ -350,13 +368,16 @@ export const exportToExcel = (
         .join('; ');
 
       return {
+        ID: i.id || '',
         Asunto: safeString(i.asunto),
         Tipo: safeString(i.tipo, 'reunion'),
         Fecha: safeString(i.fecha),
         FechaLimite: safeString(i.fechaLimite),
         Estado: safeString(i.estado, 'pendiente'),
         Contactos: conts.map(c => c.nombre).join(', '),
+        ID_Contactos: allContIds.join(', '),
         Empresas: allEmpNames.join(', '),
+        ID_Empresas: (i.empresaIds || []).join(', '),
         Descripcion: safeString(i.descripcion),
         Resolucion: safeString(i.resolucion),
         Pasos: pasosFormatted,
@@ -368,13 +389,16 @@ export const exportToExcel = (
       : XLSX.utils.aoa_to_sheet([interaccionesHeaders]);
 
     wsInteracciones['!cols'] = [
+      { wch: 24 }, // ID
       { wch: 30 }, // Asunto
       { wch: 12 }, // Tipo
       { wch: 12 }, // Fecha
       { wch: 12 }, // FechaLimite
       { wch: 14 }, // Estado
       { wch: 25 }, // Contactos
+      { wch: 24 }, // ID_Contactos
       { wch: 25 }, // Empresas
+      { wch: 24 }, // ID_Empresas
       { wch: 35 }, // Descripcion
       { wch: 30 }, // Resolucion
       { wch: 35 }, // Pasos
@@ -382,13 +406,16 @@ export const exportToExcel = (
     XLSX.utils.book_append_sheet(wb, wsInteracciones, 'Interacciones');
 
     // 4. Relaciones Sheet
-    const relacionesHeaders = ['Fabricante', 'Distribuidor', 'Preferente', 'Notas'];
+    const relacionesHeaders = ['ID', 'Fabricante', 'ID_Fabricante', 'Distribuidor', 'ID_Distribuidor', 'Preferente', 'Notas'];
     const relacionesData = relaciones.map(r => {
       const f = empresas.find(e => e.id === r.fabricanteId);
       const d = empresas.find(e => e.id === r.distribuidorId);
       return {
+        ID: r.id || '',
         Fabricante: f?.nombre || '',
+        ID_Fabricante: r.fabricanteId || '',
         Distribuidor: d?.nombre || '',
+        ID_Distribuidor: r.distribuidorId || '',
         Preferente: r.preferente === 'si' ? 'si' : 'no',
         Notas: safeString(r.notas),
       };
@@ -399,8 +426,11 @@ export const exportToExcel = (
       : XLSX.utils.aoa_to_sheet([relacionesHeaders]);
 
     wsRelaciones['!cols'] = [
+      { wch: 24 }, // ID
       { wch: 25 }, // Fabricante
+      { wch: 24 }, // ID_Fabricante
       { wch: 25 }, // Distribuidor
+      { wch: 24 }, // ID_Distribuidor
       { wch: 12 }, // Preferente
       { wch: 30 }, // Notas
     ];
@@ -439,6 +469,7 @@ export const downloadExcelTemplate = () => {
   // 1. Template Empresas
   const templateEmpresas = [
     {
+      ID: '', // Dejar vacío para nuevo proveedor, o incluir ID para actualizar
       Nombre: 'Acme Componentes S.L.',
       Tipo: 'fabricante',
       Estado: 'homologado',
@@ -458,6 +489,7 @@ export const downloadExcelTemplate = () => {
       UNSPSC: '31161500 - Tornillos, pernos y tuercas',
     },
     {
+      ID: '',
       Nombre: 'Distribuciones Logísticas Ibérica S.A.',
       Tipo: 'distribuidor',
       Estado: 'en_proceso',
@@ -479,7 +511,7 @@ export const downloadExcelTemplate = () => {
   ];
   const wsEmpresas = XLSX.utils.json_to_sheet(templateEmpresas);
   wsEmpresas['!cols'] = [
-    { wch: 32 }, { wch: 14 }, { wch: 14 }, { wch: 15 }, { wch: 35 },
+    { wch: 24 }, { wch: 32 }, { wch: 14 }, { wch: 14 }, { wch: 15 }, { wch: 35 },
     { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 12 }, { wch: 18 },
     { wch: 28 }, { wch: 25 }, { wch: 18 }, { wch: 25 }, { wch: 18 },
     { wch: 35 }, { wch: 35 }
@@ -489,10 +521,13 @@ export const downloadExcelTemplate = () => {
   // 2. Template Contactos
   const templateContactos = [
     {
+      ID: '', // Dejar vacío para nuevo contacto, o incluir ID para actualizar
       Nombre: 'Carlos Martínez González',
       EmpresaPrincipal: 'Acme Componentes S.L.',
+      ID_Empresa: '',
       Cargo: 'Director Comercial',
       ReportaA: '',
+      ID_ReportaA: '',
       Telefono: '+34 611 223 344',
       Email: 'carlos.martinez@acmecomponentes.es',
       LinkedIn: 'https://linkedin.com/in/carlosmartinez',
@@ -503,10 +538,13 @@ export const downloadExcelTemplate = () => {
       Notas: 'Persona de contacto clave para cotizaciones.'
     },
     {
+      ID: '',
       Nombre: 'Laura Gómez Sánchez',
       EmpresaPrincipal: 'Distribuciones Logísticas Ibérica S.A.',
+      ID_Empresa: '',
       Cargo: 'Jefa de Cuentas Clave',
       ReportaA: '',
+      ID_ReportaA: '',
       Telefono: '+34 622 334 455',
       Email: 'laura.gomez@distribucionesiberica.com',
       LinkedIn: '',
@@ -519,7 +557,7 @@ export const downloadExcelTemplate = () => {
   ];
   const wsContactos = XLSX.utils.json_to_sheet(templateContactos);
   wsContactos['!cols'] = [
-    { wch: 26 }, { wch: 30 }, { wch: 22 }, { wch: 18 }, { wch: 18 },
+    { wch: 24 }, { wch: 26 }, { wch: 30 }, { wch: 24 }, { wch: 22 }, { wch: 18 }, { wch: 24 }, { wch: 18 },
     { wch: 30 }, { wch: 25 }, { wch: 12 }, { wch: 25 }, { wch: 22 },
     { wch: 25 }, { wch: 35 }
   ];
@@ -527,14 +565,15 @@ export const downloadExcelTemplate = () => {
 
   // 3. Sheet de Guía / Instrucciones
   const instrucciones = [
+    { Campo: 'ID', Obligatorio: 'NO', Descripcion: 'Identificador único del sistema. Dejar en blanco para altas nuevas; si se incluye un ID existente, el sistema actualizará ese registro exacto evitando duplicados.' },
     { Campo: 'Nombre', Obligatorio: 'SÍ', Descripcion: 'Nombre o Razón Social del proveedor/contacto.' },
     { Campo: 'Tipo', Obligatorio: 'NO', Descripcion: 'Valores válidos: fabricante, distribuidor, servicios, otros. (Por defecto: fabricante).' },
     { Campo: 'Estado', Obligatorio: 'NO', Descripcion: 'Valores válidos: prospecto, en_proceso, homologado, validado, en_cuarentena, no_apto, inactivo. (Por defecto: prospecto).' },
     { Campo: 'NIT_CIF', Obligatorio: 'NO', Descripcion: 'CIF / NIF / VAT de la empresa para evitar registros duplicados.' },
     { Campo: 'Tags', Obligatorio: 'NO', Descripcion: 'Etiquetas o palabras clave separadas por comas (ej: mecánica, plástico).' },
     { Campo: 'UNSPSC', Obligatorio: 'NO', Descripcion: 'Código numérico de 8 dígitos de clasificación de suministros o servicios.' },
-    { Campo: 'EmpresaPrincipal', Obligatorio: 'SÍ (para contacto)', Descripcion: 'Nombre exacto de la empresa a la que pertenece el contacto.' },
-    { Campo: 'ReportaA', Obligatorio: 'NO', Descripcion: 'Nombre del contacto superior al que reporta jerárquicamente en el organigrama.' },
+    { Campo: 'EmpresaPrincipal / ID_Empresa', Obligatorio: 'SÍ (para contacto)', Descripcion: 'Nombre de la empresa o su ID al que pertenece el contacto.' },
+    { Campo: 'ReportaA / ID_ReportaA', Obligatorio: 'NO', Descripcion: 'Nombre o ID del contacto superior al que reporta jerárquicamente en el organigrama.' },
   ];
   const wsInstrucciones = XLSX.utils.json_to_sheet(instrucciones);
   wsInstrucciones['!cols'] = [{ wch: 20 }, { wch: 18 }, { wch: 60 }];
@@ -635,6 +674,7 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
           const rawNombre = getRowField(normRow, ['nombre', 'empresa', 'proveedor', 'razonsocial', 'company', 'name', 'titular', 'nombreempresa', 'denominacion']);
           if (!rawNombre || String(rawNombre).trim() === '') continue; // Skip empty row
 
+          const id = safeString(getRowField(normRow, ['id', 'codigosrm', 'codigo', 'idsrm', 'idempresa', 'idproveedor']));
           const nombre = String(rawNombre).trim();
           const tipo = normalizeTipo(getRowField(normRow, ['tipo', 'tipoproveedor', 'categoria', 'category', 'type', 'tipodeempresa']));
           const estado = normalizeEstado(getRowField(normRow, ['estado', 'status', 'homologacion', 'situacion', 'estadoproveedor']));
@@ -685,6 +725,7 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
           const fecha_creacion = rawFecha ? parseExcelDate(rawFecha) : new Date().toISOString().slice(0, 10);
 
           parsedEmpresas.push({
+            ...(id ? { id } : {}),
             nombre,
             tipo,
             estado,
@@ -723,6 +764,9 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
           const rawNombre = getRowField(normRow, ['nombre', 'contacto', 'nombrecontacto', 'name', 'persona', 'responsable', 'atencion', 'personadecontacto']);
           if (!rawNombre || String(rawNombre).trim() === '') continue;
 
+          const id = safeString(getRowField(normRow, ['id', 'codigosrm', 'codigo', 'idsrm', 'idcontacto']));
+          const empresaId = safeString(getRowField(normRow, ['idempresa', 'empresa_id', 'id_empresa', 'empresaid']));
+          const reportaAId = safeString(getRowField(normRow, ['idreportaa', 'reportaa_id', 'id_reportaa', 'reportaaid', 'idjefe', 'idsupervisor']));
           const nombre = String(rawNombre).trim();
           const empresaNombre = safeString(getRowField(normRow, ['empresa', 'empresaprincipal', 'company', 'proveedor', 'empresas', 'nombreempresa']));
           const cargo = safeString(getRowField(normRow, ['cargo', 'puesto', 'posicion', 'role', 'title', 'funcion', 'ocupacion']));
@@ -747,6 +791,9 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
           const notas = safeString(getRowField(normRow, ['notas', 'observaciones', 'comentarios', 'notes']));
 
           parsedContactos.push({
+            ...(id ? { id } : {}),
+            ...(empresaId ? { empresaId } : {}),
+            ...(reportaAId ? { reportaAId } : {}),
             nombre,
             empresaNombre,
             cargo,
@@ -779,6 +826,12 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
           const rawAsunto = getRowField(normRow, ['asunto', 'titulo', 'subject', 'tema', 'motivo']);
           if (!rawAsunto || String(rawAsunto).trim() === '') continue;
 
+          const id = safeString(getRowField(normRow, ['id', 'codigosrm', 'codigo', 'idsrm', 'idinteraccion']));
+          const rawContIds = getRowField(normRow, ['idcontactos', 'id_contactos', 'contactosids', 'idcontacto', 'id_contacto']);
+          const contactoIds = rawContIds ? String(rawContIds).split(/[,;]/).map(s => s.trim()).filter(Boolean) : [];
+          const rawEmpIds = getRowField(normRow, ['idempresas', 'id_empresas', 'empresasids', 'idempresa', 'id_empresa']);
+          const empresaIds = rawEmpIds ? String(rawEmpIds).split(/[,;]/).map(s => s.trim()).filter(Boolean) : [];
+
           const asunto = String(rawAsunto).trim();
           const rawTipo = normalizeKey(String(getRowField(normRow, ['tipo', 'type', 'canal', 'mediodecontacto']) || ''));
           let tipo: 'reunion' | 'llamada' | 'email' | 'feria' = 'reunion';
@@ -804,6 +857,9 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
           const pasosRaw = safeString(getRowField(normRow, ['pasos', 'acciones', 'tareas', 'siguientespasos']));
 
           parsedInteracciones.push({
+            ...(id ? { id } : {}),
+            ...(contactoIds.length > 0 ? { contactoIds } : {}),
+            ...(empresaIds.length > 0 ? { empresaIds } : {}),
             asunto,
             tipo,
             fecha,
@@ -830,15 +886,22 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
             normRow[normalizeKey(k)] = v;
           }
 
+          const id = safeString(getRowField(normRow, ['id', 'codigosrm', 'codigo', 'idsrm', 'idrelacion']));
+          const fabricanteId = safeString(getRowField(normRow, ['idfabricante', 'id_fabricante', 'fabricanteid']));
+          const distribuidorId = safeString(getRowField(normRow, ['iddistribuidor', 'id_distribuidor', 'distribuidorid']));
           const fabricanteNombre = safeString(getRowField(normRow, ['fabricante', 'manufacturer', 'empresa1', 'fabricanteprincipal']));
           const distribuidorNombre = safeString(getRowField(normRow, ['distribuidor', 'distributor', 'empresa2', 'distribuidorautorizado']));
-          if (!fabricanteNombre || !distribuidorNombre) continue;
+          if (!fabricanteNombre && !fabricanteId) continue;
+          if (!distribuidorNombre && !distribuidorId) continue;
 
           const rawPref = normalizeKey(String(getRowField(normRow, ['preferente', 'preferred', 'prioritario', 'espreferente']) || ''));
           const preferente = rawPref.includes('si') || rawPref.includes('yes') || rawPref.includes('true') || rawPref === '1' ? 'si' : 'no';
           const notas = safeString(getRowField(normRow, ['notas', 'observaciones', 'notes']));
 
           parsedRelaciones.push({
+            ...(id ? { id } : {}),
+            ...(fabricanteId ? { fabricanteId } : {}),
+            ...(distribuidorId ? { distribuidorId } : {}),
             fabricanteNombre,
             distribuidorNombre,
             preferente,
