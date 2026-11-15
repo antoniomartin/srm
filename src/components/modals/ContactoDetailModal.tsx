@@ -380,12 +380,12 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-3 sm:p-6 transition-all duration-300"
+      className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-2 sm:p-4 lg:p-6 transition-all duration-300"
       onClick={onClose}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col max-h-[92vh] sm:max-h-[88vh] border border-slate-200 overflow-hidden"
+        className="w-full max-w-6xl 2xl:max-w-7xl bg-white rounded-2xl shadow-2xl flex flex-col h-[94vh] sm:h-[90vh] max-h-[94vh] sm:max-h-[90vh] border border-slate-200 overflow-hidden"
       >
         {/* Header */}
         <div className="p-6 bg-indigo-900 text-white flex items-start justify-between">

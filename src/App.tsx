@@ -2357,10 +2357,10 @@ export default function App() {
 
       {/* Calendar Modal Overlay */}
       {showCalendarModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 lg:p-6 transition-all duration-300">
+          <div className="w-full max-w-6xl 2xl:max-w-7xl bg-white rounded-2xl shadow-2xl border border-slate-200/80 overflow-hidden flex flex-col h-[94vh] sm:h-[90vh] max-h-[94vh] sm:max-h-[90vh]">
             {/* Header */}
-            <div className="p-4 sm:p-5 bg-indigo-600 text-white flex items-center justify-between">
+            <div className="p-4 sm:p-5 bg-indigo-600 text-white flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2.5">
                 <Calendar className="w-5 h-5" />
                 <div>
@@ -2378,7 +2378,7 @@ export default function App() {
             </div>
 
             {/* Content */}
-            <div className="p-3 sm:p-6 overflow-y-auto max-h-[85vh]">
+            <div className="p-3 sm:p-6 overflow-y-auto flex-1">
               <CustomCalendar 
                 interacciones={interacciones}
                 contactos={contactos}
@@ -2391,7 +2391,7 @@ export default function App() {
             </div>
 
             {/* Footer */}
-            <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-100 text-right text-[10px] text-slate-400">
+            <div className="p-3 sm:p-4 bg-slate-50 border-t border-slate-100 text-right text-[10px] text-slate-400 shrink-0">
               Presiona <span className="bg-white border border-slate-200 px-1.5 py-0.5 rounded font-mono shadow-sm">ESC</span> o haz clic en la X para cerrar.
             </div>
           </div>
