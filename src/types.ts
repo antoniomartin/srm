@@ -14,6 +14,14 @@ export interface EvaluacionDesempeno {
   ultimaActualizacion?: string; // ISO String
 }
 
+export interface NotaItem {
+  id: string;
+  texto: string;
+  fecha: string; // ISO String (ej. 2026-11-20T17:05:00.000Z)
+  anulada?: boolean;
+  fechaAnulacion?: string;
+}
+
 export interface Empresa {
   id?: string;
   nombre: string;
@@ -29,6 +37,7 @@ export interface Empresa {
   email: string;
   web: string;
   notas: string;
+  notasHistorial?: NotaItem[];
   tags: string[];
   esTambien?: EmpresaTipo[];
   fecha_creacion: string;
@@ -104,6 +113,7 @@ export interface Contacto {
   empresaConocido?: string[];
   intereses?: string[];
   notas: string;
+  notasHistorial?: NotaItem[];
   fecha_creacion: string;
   estado: 'activo' | 'inactivo';
   motivoInactivo?: string;

@@ -9,8 +9,9 @@ import {
   Briefcase, UserCheck, UserX, User, Building2
 } from 'lucide-react';
 import md5 from 'blueimp-md5';
-import { Contacto, Empresa, Interaccion } from '../../types';
+import { Contacto, Empresa, Interaccion, NotaItem } from '../../types';
 import { SearchSelect } from '../SearchSelect';
+import { NotasManager } from '../NotasManager';
 
 export interface ContactoDetailModalProps {
   selectedContacto: Contacto | null;
@@ -67,6 +68,9 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
   const [localLinkedin, setLocalLinkedin] = useState(selectedContacto?.linkedin || '');
   const [localFoto, setLocalFoto] = useState(selectedContacto?.foto || '');
   const [localNotas, setLocalNotas] = useState(selectedContacto?.notas || '');
+  const [localNotasHistorial, setLocalNotasHistorial] = useState<NotaItem[]>(
+    selectedContacto?.notasHistorial || []
+  );
   const [localEstado, setLocalEstado] = useState<'activo' | 'inactivo'>(selectedContacto?.estado || 'activo');
   const [localMotivoInactivo, setLocalMotivoInactivo] = useState(selectedContacto?.motivoInactivo || '');
   const [localEmpresaConocido, setLocalEmpresaConocido] = useState<string[]>(
@@ -121,6 +125,7 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
     setLocalLinkedin(selectedContacto?.linkedin || '');
     setLocalFoto(selectedContacto?.foto || '');
     setLocalNotas(selectedContacto?.notas || '');
+    setLocalNotasHistorial(selectedContacto?.notasHistorial || []);
     setLocalEstado(selectedContacto?.estado || 'activo');
     setLocalMotivoInactivo(selectedContacto?.motivoInactivo || '');
     setLocalEmpresaConocido(
@@ -206,6 +211,18 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
 
     const updated = { ...selectedContacto, [field]: value };
     await onUpdateContacto(updated);
+  };
+
+  const handleNotasChange = async (historial: NotaItem[], serialized: string) => {
+    setLocalNotas(serialized);
+    setLocalNotasHistorial(historial);
+    if (!isCreating && selectedContacto?.id) {
+      await onUpdateContacto({
+        ...selectedContacto,
+        notas: serialized,
+        notasHistorial: historial,
+      });
+    }
   };
 
   // Save a text field on blur (called when user leaves the input in edit mode)
@@ -316,6 +333,7 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
         linkedin: localLinkedin.trim(),
         foto: localFoto.trim(),
         notas: localNotas.trim(),
+        notasHistorial: localNotasHistorial,
         estado: localEstado,
         motivoInactivo: localEstado === 'inactivo' ? localMotivoInactivo.trim() : '',
         empresaConocido: localEmpresaConocido,
@@ -899,15 +917,14 @@ export const ContactoDetailModal: React.FC<ContactoDetailModalProps> = ({
               />
             </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-slate-500 uppercase">Notas y acuerdos del contacto</label>
-              <textarea
-                value={localNotas}
-                onChange={(e) => setLocalNotas(e.target.value)}
-                onBlur={() => handleBlurSave('notas', localNotas)}
-                rows={3}
-                className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all resize-none font-medium text-slate-700"
-                placeholder="Escribe comentarios, acuerdos, proyectos o notas sobre este contacto..."
+            <div className="md:col-span-2 border-t border-slate-100 pt-4 mt-2">
+              <NotasManager
+                notasRaw={localNotas}
+                notasHistorial={localNotasHistorial}
+                onChange={handleNotasChange}
+                title="Notas y Acuerdos del Contacto"
+                placeholder="Escribe comentarios, acuerdos o notas sobre este contacto..."
+                isCreating={isCreating}
               />
             </div>
 

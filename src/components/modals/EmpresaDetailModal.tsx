@@ -11,9 +11,10 @@ import {
 } from 'lucide-react';
 import { 
   Empresa, Contacto, Interaccion, Documento, Relacion, EmpresaTipo, EmpresaEstado,
-  UNSPSC_OPTIONS, UnspscCode 
+  UNSPSC_OPTIONS, UnspscCode, NotaItem 
 } from '../../types';
 import { OrganigramaTree } from './OrganigramaTree';
+import { NotasManager } from '../NotasManager';
 
 const PAISES = [
   "España", "Portugal", "Francia", "Alemania", "Italia", "Reino Unido", 
@@ -274,6 +275,9 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
   const [localEmail, setLocalEmail] = useState(selectedEmpresa?.email || '');
   const [localWeb, setLocalWeb] = useState(selectedEmpresa?.web || '');
   const [localNotas, setLocalNotas] = useState(selectedEmpresa?.notas || '');
+  const [localNotasHistorial, setLocalNotasHistorial] = useState<NotaItem[]>(
+    selectedEmpresa?.notasHistorial || []
+  );
   const [localTags, setLocalTags] = useState<string[]>(selectedEmpresa?.tags || []);
   const [localUnspscCodes, setLocalUnspscCodes] = useState<UnspscCode[]>(selectedEmpresa?.unspscCodes || []);
 
@@ -342,6 +346,7 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
     setLocalEmail(selectedEmpresa?.email || '');
     setLocalWeb(selectedEmpresa?.web || '');
     setLocalNotas(selectedEmpresa?.notas || '');
+    setLocalNotasHistorial(selectedEmpresa?.notasHistorial || []);
     setLocalTags(selectedEmpresa?.tags || []);
     setLocalUnspscCodes(selectedEmpresa?.unspscCodes || []);
 
@@ -483,6 +488,18 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
     await onUpdateEmpresa(updated);
   };
 
+  const handleNotasChange = async (historial: NotaItem[], serialized: string) => {
+    setLocalNotas(serialized);
+    setLocalNotasHistorial(historial);
+    if (!isCreating && selectedEmpresa?.id) {
+      await onUpdateEmpresa({
+        ...selectedEmpresa,
+        notas: serialized,
+        notasHistorial: historial,
+      });
+    }
+  };
+
   const handleBlurSave = useCallback((field: string, value: string) => {
     if (isCreating || !selectedEmpresa?.id) return;
     if ((selectedEmpresa as any)[field] !== value) {
@@ -562,6 +579,7 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
         email: localEmail.trim(),
         web: localWeb.trim(),
         notas: localNotas.trim(),
+        notasHistorial: localNotasHistorial,
         tags: localTags,
         unspscCodes: localUnspscCodes,
         ...(isEvalFilled
@@ -2010,21 +2028,15 @@ export const EmpresaDetailModal: React.FC<EmpresaDetailModalProps> = ({
             )}
           </div>
 
-          {/* Notas Generales */}
+          {/* Notas Generales Historial */}
           <div className="border-t border-slate-100 pt-5">
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1.5">
-              📝 Notas Generales del Proveedor
-            </label>
-            <textarea
-              value={localNotas}
-              onChange={(e) => {
-                setLocalNotas(e.target.value);
-                if (!isCreating) handleInlineSave('notas', e.target.value);
-              }}
-              onBlur={() => !isCreating && handleBlurSave('notas', localNotas)}
-              placeholder="Escribe notas adicionales, acuerdos comerciales o comentarios aquí..."
-              rows={4}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium resize-none leading-relaxed text-slate-700 shadow-sm"
+            <NotasManager
+              notasRaw={localNotas}
+              notasHistorial={localNotasHistorial}
+              onChange={handleNotasChange}
+              title="Notas y Acuerdos del Proveedor"
+              placeholder="Escribe una nueva nota, acuerdo comercial o apunte..."
+              isCreating={isCreating}
             />
           </div>
 
