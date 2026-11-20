@@ -14,10 +14,34 @@ interface LeafletMapProps {
   selectedEstado: string;
   scores: { [id: string]: { nivel: string; label: string; dias: number | null } };
   isVisible?: boolean;
+  onSaveCoordinates?: (empId: string, coords: { lat: number; lon: number }, geoAddr: string) => Promise<void>;
+  onGeocodeManual?: (empId: string) => void;
 }
 
-// In-memory cache for address geocoding
-const geoCache: { [addr: string]: { lat: number; lon: number } } = {};
+// Persistent localStorage cache for address geocoding to prevent re-querying Nominatim
+const STORAGE_GEO_CACHE_KEY = 'srm_geocache_v2';
+const loadCachedCoords = (): Record<string, { lat: number; lon: number }> => {
+  try {
+    const raw = localStorage.getItem(STORAGE_GEO_CACHE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+};
+
+const saveCachedCoords = (addr: string, coords: { lat: number; lon: number }) => {
+  try {
+    const current = loadCachedCoords();
+    current[addr] = coords;
+    localStorage.setItem(STORAGE_GEO_CACHE_KEY, JSON.stringify(current));
+  } catch {
+    // ignore
+  }
+};
+
+const geoCache: { [addr: string]: { lat: number; lon: number } } = {
+  ...loadCachedCoords(),
+};
 
 export const LeafletMap: React.FC<LeafletMapProps> = ({
   empresas,
@@ -26,6 +50,8 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
   selectedEstado,
   scores,
   isVisible = true,
+  onSaveCoordinates,
+  onGeocodeManual,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -39,6 +65,16 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
   useEffect(() => {
     onOpenFichaRef.current = onOpenFicha;
   }, [onOpenFicha]);
+
+  const onSaveCoordinatesRef = useRef(onSaveCoordinates);
+  useEffect(() => {
+    onSaveCoordinatesRef.current = onSaveCoordinates;
+  }, [onSaveCoordinates]);
+
+  const onGeocodeManualRef = useRef(onGeocodeManual);
+  useEffect(() => {
+    onGeocodeManualRef.current = onGeocodeManual;
+  }, [onGeocodeManual]);
 
   const initialFitDoneRef = useRef(false);
   const lastPlottedFingerprintRef = useRef('');
@@ -90,7 +126,7 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
   const geocodeAddress = async (query: string): Promise<{ lat: number; lon: number } | null> => {
     if (geoCache[query]) return geoCache[query];
     try {
-      await new Promise((r) => setTimeout(r, 1100));
+      await new Promise((r) => setTimeout(r, 1000));
       const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`;
       const resp = await fetch(url, {
         headers: { 'Accept-Language': 'es', 'User-Agent': 'SRM-Profesional-React/1.0' },
@@ -100,6 +136,7 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
       if (data && data[0]) {
         const coords = { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
         geoCache[query] = coords;
+        saveCachedCoords(query, coords);
         return coords;
       }
     } catch (e) {
@@ -248,20 +285,47 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
     const plotMarkers = async () => {
       setIsLoading(true);
       let placedCount = 0;
+      let fromDbCount = 0;
+      let newlyGeocodedCount = 0;
       const missingAddresses: string[] = [];
 
       for (const emp of filtered) {
         if (cancels) return;
 
         let coords: { lat: number; lon: number } | null = null;
+        const currentAddr = getCompanyFullAddress(emp);
 
-        if (emp._lat && emp._lon) {
+        // 1. Verificamos si ya tiene coordenadas guardadas en la Base de Datos
+        if (emp._lat && emp._lon && (emp._manual || !emp._geoAddr || emp._geoAddr === currentAddr)) {
           coords = { lat: emp._lat, lon: emp._lon };
-        } else {
-          const addr = getCompanyFullAddress(emp);
-          if (addr) {
-            setStatusMessage(`Localizando: ${emp.nombre}...`);
-            coords = await geocodeAddress(addr);
+          fromDbCount++;
+        } else if (currentAddr) {
+          // 2. Comprobamos la caché persistente local
+          const cached = geoCache[currentAddr];
+          if (cached) {
+            coords = cached;
+            fromDbCount++;
+            // Si la empresa en BBDD no las tenía aún, las persistimos inmediatamente
+            if (emp.id && onSaveCoordinatesRef.current && (!emp._lat || !emp._lon || emp._geoAddr !== currentAddr)) {
+              emp._lat = coords.lat;
+              emp._lon = coords.lon;
+              emp._geoAddr = currentAddr;
+              onSaveCoordinatesRef.current(emp.id, coords, currentAddr).catch(console.error);
+            }
+          } else {
+            // 3. Geocodificamos y GUARDAMOS DE FORMA PERMANENTE EN BBDD
+            setStatusMessage(`Localizando y guardando coordenadas en BBDD: ${emp.nombre}...`);
+            coords = await geocodeAddress(currentAddr);
+            if (coords) {
+              newlyGeocodedCount++;
+              // Guardado inmediato en base de datos para no tener que regenerar
+              if (emp.id && onSaveCoordinatesRef.current) {
+                emp._lat = coords.lat;
+                emp._lon = coords.lon;
+                emp._geoAddr = currentAddr;
+                onSaveCoordinatesRef.current(emp.id, coords, currentAddr).catch(console.error);
+              }
+            }
           }
         }
 
@@ -300,28 +364,53 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
                 <span style="font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 6px; background: ${scoreBadgeBg}; color: ${scoreBadgeText};">
                   ⭐ ${score.label}
                 </span>
+                <span style="font-size: 9px; font-weight: 600; padding: 2px 5px; border-radius: 5px; background: #f1f5f9; color: #64748b; font-family: monospace;">
+                  ${coords.lat.toFixed(4)}, ${coords.lon.toFixed(4)}
+                </span>
               </div>
-              <button 
-                id="marker-btn-${emp.id}"
-                style="
-                  width: 100%;
-                  background: #4f46e5;
-                  color: #ffffff;
-                  border: none;
-                  border-radius: 8px;
-                  padding: 7px 12px;
-                  font-size: 11px;
-                  font-weight: 700;
-                  cursor: pointer;
-                  display: flex;
-                  align-items: center;
-                  justify-content: center;
-                  gap: 4px;
-                  box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
-                "
-              >
-                Abrir Ficha de Proveedor →
-              </button>
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <button 
+                  id="marker-btn-${emp.id}"
+                  style="
+                    width: 100%;
+                    background: #4f46e5;
+                    color: #ffffff;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 7px 12px;
+                    font-size: 11px;
+                    font-weight: 700;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 4px;
+                    box-shadow: 0 2px 4px rgba(79, 70, 229, 0.2);
+                  "
+                >
+                  Abrir Ficha de Proveedor →
+                </button>
+                <button
+                  id="marker-pin-btn-${emp.id}"
+                  style="
+                    width: 100%;
+                    background: #f8fafc;
+                    color: #334155;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    padding: 5px 10px;
+                    font-size: 10px;
+                    font-weight: 600;
+                    cursor: pointer;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    gap: 4px;
+                  "
+                >
+                  📍 Reajustar pin en mapa
+                </button>
+              </div>
             </div>
           `;
 
@@ -337,6 +426,13 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
                 onOpenFichaRef.current(emp.id!);
               });
             }
+            const pinBtn = document.getElementById(`marker-pin-btn-${emp.id}`);
+            if (pinBtn && onGeocodeManualRef.current) {
+              pinBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                onGeocodeManualRef.current?.(emp.id!);
+              });
+            }
           });
 
           markersRef.current.push(marker);
@@ -347,10 +443,16 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
 
       setIsLoading(false);
       setGeocodedCount(placedCount);
-      setStatusMessage(
-        `${placedCount} proveedor(es) localizados en el mapa.` +
-          (missingAddresses.length > 0 ? ` Pendientes de ubicar: ${missingAddresses.slice(0, 3).join(', ')}${missingAddresses.length > 3 ? '...' : ''}` : '')
-      );
+      let status = `${placedCount} proveedor(es) localizados en el mapa.`;
+      if (fromDbCount > 0 && newlyGeocodedCount === 0) {
+        status += ` (Cargados al instante desde la base de datos)`;
+      } else if (newlyGeocodedCount > 0) {
+        status += ` (${newlyGeocodedCount} guardados en la base de datos para no regenerar)`;
+      }
+      if (missingAddresses.length > 0) {
+        status += ` Pendientes de ubicar: ${missingAddresses.slice(0, 3).join(', ')}${missingAddresses.length > 3 ? '...' : ''}`;
+      }
+      setStatusMessage(status);
 
       if (markersRef.current.length > 0) {
         // Only fit bounds on initial load or if user actively changed the filter

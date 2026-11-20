@@ -933,6 +933,11 @@ export default function App() {
             esTambien: [...new Set([...(existing.esTambien || []), ...(empRow.esTambien || [])])],
             unspscCodes: empRow.unspscCodes?.length ? empRow.unspscCodes : existing.unspscCodes,
             ...(empRow.evaluacion || existing.evaluacion ? { evaluacion: empRow.evaluacion || existing.evaluacion } : {}),
+            ...(empRow._lat !== undefined && empRow._lon !== undefined
+              ? { _lat: empRow._lat, _lon: empRow._lon }
+              : existing._lat !== undefined && existing._lon !== undefined
+              ? { _lat: existing._lat, _lon: existing._lon, _geoAddr: existing._geoAddr }
+              : {}),
           };
 
           await saveDocument('empresas', updatedData, existing.id);
@@ -951,6 +956,7 @@ export default function App() {
             ciudad: empRow.ciudad || '',
             provincia: empRow.provincia || '',
             pais: empRow.pais || 'España',
+            ...(empRow._lat !== undefined && empRow._lon !== undefined ? { _lat: empRow._lat, _lon: empRow._lon } : {}),
             telefono: empRow.telefono || '',
             email: empRow.email || '',
             web: empRow.web || '',
@@ -2225,6 +2231,13 @@ export default function App() {
                 selectedEstado={mapEstadoFilter}
                 scores={scores}
                 isVisible={currentTab === 'mapa'}
+                onSaveCoordinates={async (empId, coords, geoAddr) => {
+                  await saveDocument('empresas', { _lat: coords.lat, _lon: coords.lon, _geoAddr: geoAddr }, empId);
+                }}
+                onGeocodeManual={(id) => {
+                  const emp = empresas.find(e => e.id === id);
+                  if (emp) setPinningEmpresa(emp);
+                }}
               />
             </div>
 

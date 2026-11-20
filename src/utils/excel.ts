@@ -17,6 +17,8 @@ export interface ParsedEmpresaRow {
   ciudad: string;
   provincia: string;
   pais: string;
+  _lat?: number;
+  _lon?: number;
   telefono: string;
   email: string;
   web: string;
@@ -233,7 +235,7 @@ export const exportToExcel = (
 
     // 1. Empresas Sheet
     const empresasHeaders = [
-      'ID', 'Nombre', 'Tipo', 'Estado', 'NIT_CIF', 'Direccion', 'CP', 'Ciudad', 'Provincia', 'Pais',
+      'ID', 'Nombre', 'Tipo', 'Estado', 'NIT_CIF', 'Direccion', 'CP', 'Ciudad', 'Provincia', 'Pais', 'Latitud', 'Longitud',
       'Telefono', 'Email', 'Web', 'Grupo', 'Tags', 'RolesAdicionales', 'Notas', 'UNSPSC',
       'Evaluacion_Plazos', 'Evaluacion_Calidad', 'Evaluacion_Flexibilidad', 'Evaluacion_Comentarios', 'FechaCreacion'
     ];
@@ -249,6 +251,8 @@ export const exportToExcel = (
       Ciudad: safeString(e.ciudad),
       Provincia: safeString(e.provincia),
       Pais: safeString(e.pais, 'España'),
+      Latitud: e._lat ?? '',
+      Longitud: e._lon ?? '',
       Telefono: safeString(e.telefono),
       Email: safeString(e.email),
       Web: safeString(e.web),
@@ -279,6 +283,8 @@ export const exportToExcel = (
       { wch: 18 }, // Ciudad
       { wch: 18 }, // Provincia
       { wch: 15 }, // Pais
+      { wch: 14 }, // Latitud
+      { wch: 14 }, // Longitud
       { wch: 16 }, // Telefono
       { wch: 25 }, // Email
       { wch: 22 }, // Web
@@ -727,6 +733,11 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
           const rawFecha = getRowField(normRow, ['fechacreacion', 'fechaalta', 'fecha', 'creadoel']);
           const fecha_creacion = rawFecha ? parseExcelDate(rawFecha) : new Date().toISOString().slice(0, 10);
 
+          const rawLat = getRowField(normRow, ['latitud', 'lat', 'latitude']);
+          const rawLon = getRowField(normRow, ['longitud', 'lon', 'lng', 'longitude']);
+          const _lat = rawLat !== undefined && rawLat !== '' && !isNaN(Number(rawLat)) ? Number(rawLat) : undefined;
+          const _lon = rawLon !== undefined && rawLon !== '' && !isNaN(Number(rawLon)) ? Number(rawLon) : undefined;
+
           parsedEmpresas.push({
             ...(id ? { id } : {}),
             nombre,
@@ -738,6 +749,7 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
             ciudad,
             provincia,
             pais,
+            ...(_lat !== undefined && _lon !== undefined ? { _lat, _lon } : {}),
             telefono,
             email,
             web,
