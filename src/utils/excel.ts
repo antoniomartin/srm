@@ -56,9 +56,10 @@ export interface ParsedContactoRow {
 export interface ParsedInteraccionRow {
   id?: string;
   asunto: string;
-  tipo: 'reunion' | 'llamada' | 'email' | 'feria';
+  tipo: 'reunion' | 'llamada' | 'email' | 'videollamada' | 'feria' | 'visita' | 'otro';
   fecha: string;
   fechaLimite?: string;
+  lugar?: string;
   estado: 'pendiente' | 'completada';
   contactosNombres: string[];
   contactoIds?: string[];
@@ -351,7 +352,7 @@ export const exportToExcel = (
 
     // 3. Interacciones Sheet
     const interaccionesHeaders = [
-      'ID', 'Asunto', 'Tipo', 'Fecha', 'FechaLimite', 'Estado', 'Contactos', 'ID_Contactos', 'Empresas', 'ID_Empresas', 'Descripcion', 'Resolucion', 'Pasos'
+      'ID', 'Asunto', 'Tipo', 'Fecha', 'FechaLimite', 'Lugar', 'Estado', 'Contactos', 'ID_Contactos', 'Empresas', 'ID_Empresas', 'Descripcion', 'Resolucion', 'Pasos'
     ];
 
     const interaccionesData = interacciones.map(i => {
@@ -373,6 +374,7 @@ export const exportToExcel = (
         Tipo: safeString(i.tipo, 'reunion'),
         Fecha: safeString(i.fecha),
         FechaLimite: safeString(i.fechaLimite),
+        Lugar: safeString(i.lugar),
         Estado: safeString(i.estado, 'pendiente'),
         Contactos: conts.map(c => c.nombre).join(', '),
         ID_Contactos: allContIds.join(', '),
@@ -394,6 +396,7 @@ export const exportToExcel = (
       { wch: 12 }, // Tipo
       { wch: 12 }, // Fecha
       { wch: 12 }, // FechaLimite
+      { wch: 25 }, // Lugar
       { wch: 14 }, // Estado
       { wch: 25 }, // Contactos
       { wch: 24 }, // ID_Contactos
@@ -834,10 +837,13 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
 
           const asunto = String(rawAsunto).trim();
           const rawTipo = normalizeKey(String(getRowField(normRow, ['tipo', 'type', 'canal', 'mediodecontacto']) || ''));
-          let tipo: 'reunion' | 'llamada' | 'email' | 'feria' = 'reunion';
-          if (rawTipo.includes('llamad') || rawTipo.includes('phone') || rawTipo.includes('tel')) tipo = 'llamada';
+          let tipo: 'reunion' | 'llamada' | 'email' | 'videollamada' | 'feria' | 'visita' | 'otro' = 'reunion';
+          if (rawTipo.includes('video') || rawTipo.includes('videollamada') || rawTipo.includes('zoom') || rawTipo.includes('teams') || rawTipo.includes('meet')) tipo = 'videollamada';
+          else if (rawTipo.includes('llamad') || rawTipo.includes('phone') || rawTipo.includes('tel')) tipo = 'llamada';
           else if (rawTipo.includes('email') || rawTipo.includes('correo')) tipo = 'email';
+          else if (rawTipo.includes('visita')) tipo = 'visita';
           else if (rawTipo.includes('feria') || rawTipo.includes('evento')) tipo = 'feria';
+          else if (rawTipo.includes('otro') || rawTipo.includes('other')) tipo = 'otro';
 
           const fecha = parseExcelDate(getRowField(normRow, ['fecha', 'date', 'fechainteraccion']));
           const rawFechaLim = getRowField(normRow, ['fechalimite', 'limite', 'fechavencimiento', 'deadline', 'vencimiento']);
@@ -855,6 +861,7 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
           const descripcion = safeString(getRowField(normRow, ['descripcion', 'detalle', 'resumen', 'notas', 'contenido']));
           const resolucion = safeString(getRowField(normRow, ['resolucion', 'resultado', 'conclusion', 'acuerdo']));
           const pasosRaw = safeString(getRowField(normRow, ['pasos', 'acciones', 'tareas', 'siguientespasos']));
+          const lugar = safeString(getRowField(normRow, ['lugar', 'ubicacion', 'sitio', 'direccion', 'location']));
 
           parsedInteracciones.push({
             ...(id ? { id } : {}),
@@ -864,6 +871,7 @@ export const parseExcelFile = (file: File): Promise<ParsedExcelData> => {
             tipo,
             fecha,
             fechaLimite,
+            ...(lugar ? { lugar } : {}),
             estado,
             contactosNombres,
             empresasNombres,

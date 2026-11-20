@@ -1183,6 +1183,7 @@ export default function App() {
             tipo: interRow.tipo || existingInter.tipo,
             estado: interRow.estado || existingInter.estado,
             fechaLimite: interRow.fechaLimite || existingInter.fechaLimite || null,
+            lugar: interRow.lugar || existingInter.lugar || undefined,
             contactoId: mergedContactoIds[0] || existingInter.contactoId || '',
             contactoIds: mergedContactoIds,
             empresaIds: mergedEmpresaIds,
@@ -1209,6 +1210,7 @@ export default function App() {
             tipo: interRow.tipo,
             fecha: interRow.fecha,
             fechaLimite: interRow.fechaLimite || null,
+            lugar: interRow.lugar || undefined,
             estado: interRow.estado,
             contactoId: matchedContactoIds[0] || '',
             contactoIds: matchedContactoIds,
@@ -1924,9 +1926,12 @@ export default function App() {
                       {[
                         { key: 'todos', label: '📢 Todos' },
                         { key: 'reunion', label: '🤝 Reuniones' },
+                        { key: 'videollamada', label: '📹 Videollamadas' },
                         { key: 'llamada', label: '📞 Llamadas' },
                         { key: 'email', label: '✉️ Correos' },
-                        { key: 'feria', label: '🏢 Ferias' }
+                        { key: 'visita', label: '🚶 Visitas' },
+                        { key: 'feria', label: '🏢 Ferias' },
+                        { key: 'otro', label: '📌 Otros' }
                       ].map(btn => (
                         <button
                           key={btn.key}
@@ -2030,15 +2035,24 @@ export default function App() {
                         // Get Icon & Theme
                         let iconColor = "bg-indigo-50 border-indigo-200 text-indigo-700";
                         let iconText = "🤝";
-                        if (inter.tipo === 'llamada') {
+                        if (inter.tipo === 'videollamada') {
+                          iconColor = "bg-cyan-50 border-cyan-200 text-cyan-700";
+                          iconText = "📹";
+                        } else if (inter.tipo === 'llamada') {
                           iconColor = "bg-emerald-50 border-emerald-200 text-emerald-700";
                           iconText = "📞";
                         } else if (inter.tipo === 'email') {
                           iconColor = "bg-amber-50 border-amber-200 text-amber-700";
                           iconText = "✉️";
+                        } else if (inter.tipo === 'visita') {
+                          iconColor = "bg-teal-50 border-teal-200 text-teal-700";
+                          iconText = "🚶";
                         } else if (inter.tipo === 'feria') {
                           iconColor = "bg-purple-50 border-purple-200 text-purple-700";
                           iconText = "🏢";
+                        } else if (inter.tipo === 'otro') {
+                          iconColor = "bg-slate-50 border-slate-200 text-slate-700";
+                          iconText = "📌";
                         }
 
                         return (
@@ -2111,6 +2125,12 @@ export default function App() {
                                     }}>
                                       {empName}
                                     </span>
+                                  </span>
+                                )}
+                                {inter.lugar && (
+                                  <span className="flex items-center gap-1.5 border-l border-slate-200 pl-4">
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase">📍 Lugar:</span>
+                                    <span className="text-slate-700 font-semibold">{inter.lugar}</span>
                                   </span>
                                 )}
                               </div>
@@ -2797,7 +2817,7 @@ export default function App() {
                               >
                                 <div className="flex items-center gap-2.5 min-w-0">
                                   <span className="text-xs">
-                                    {inter.tipo === 'reunion' ? '🤝' : inter.tipo === 'llamada' ? '📞' : inter.tipo === 'email' ? '✉️' : '🏢'}
+                                    {inter.tipo === 'reunion' ? '🤝' : inter.tipo === 'videollamada' ? '📹' : inter.tipo === 'llamada' ? '📞' : inter.tipo === 'email' ? '✉️' : inter.tipo === 'visita' ? '🚶' : inter.tipo === 'feria' ? '🏢' : '📌'}
                                   </span>
                                   <div className="min-w-0">
                                     <p className="text-xs font-semibold text-slate-800 truncate">{inter.asunto}</p>

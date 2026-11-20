@@ -71,6 +71,7 @@ export const InteraccionDetailModal: React.FC<InteraccionDetailModalProps> = ({
   const [draftFecha, setDraftFecha] = useState(new Date().toISOString().slice(0, 10));
   const [draftEstado, setDraftEstado] = useState<string>('pendiente');
   const [draftFechaLimite, setDraftFechaLimite] = useState('');
+  const [draftLugar, setDraftLugar] = useState('');
   const [draftContactoIds, setDraftContactoIds] = useState<string[]>([]);
   const [draftPasos, setDraftPasos] = useState<PasoInteraccion[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -83,6 +84,7 @@ export const InteraccionDetailModal: React.FC<InteraccionDetailModalProps> = ({
       setDraftFecha(new Date().toISOString().slice(0, 10));
       setDraftEstado('pendiente');
       setDraftFechaLimite('');
+      setDraftLugar('');
       setDraftContactoIds([]);
       setDraftPasos([]);
       setLocalDescripcion('');
@@ -119,11 +121,12 @@ export const InteraccionDetailModal: React.FC<InteraccionDetailModalProps> = ({
         );
         await onCreateInteraccion({
           asunto: draftAsunto.trim(),
-          tipo: draftTipo,
+          tipo: draftTipo as any,
           fecha: draftFecha,
           fechaLimite: draftFechaLimite || null,
+          lugar: draftLugar.trim() || undefined,
           descripcion: localDescripcion,
-          estado: draftEstado,
+          estado: draftEstado as any,
           resolucion: localResolucion,
           contactoId: draftContactoIds[0] || '',
           contactoIds: draftContactoIds,
@@ -157,11 +160,13 @@ export const InteraccionDetailModal: React.FC<InteraccionDetailModalProps> = ({
                   onChange={(e) => setDraftTipo(e.target.value)}
                   className="bg-amber-700/50 border border-amber-400 text-white rounded-lg py-1.5 px-3 text-sm font-semibold outline-none focus:border-amber-200 cursor-pointer"
                 >
-                  <option value="reunion">Reunión</option>
-                  <option value="llamada">Llamada</option>
-                  <option value="email">Email</option>
-                  <option value="visita">Visita</option>
-                  <option value="otro">Otro</option>
+                  <option value="reunion">🤝 Reunión presencial</option>
+                  <option value="videollamada">📹 Videollamada</option>
+                  <option value="llamada">📞 Llamada</option>
+                  <option value="email">✉️ Email</option>
+                  <option value="visita">🚶 Visita presencial</option>
+                  <option value="feria">🏢 Feria / Evento</option>
+                  <option value="otro">📌 Otro</option>
                 </select>
                 <select
                   value={draftEstado}
@@ -198,6 +203,23 @@ export const InteraccionDetailModal: React.FC<InteraccionDetailModalProps> = ({
           {/* Body creación */}
           <div className="p-6 space-y-6 flex-1 overflow-y-auto">
             <div className="space-y-4">
+              {/* Lugar / Ubicación (destacado si es presencial o videollamada) */}
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase flex items-center gap-1.5">
+                  <span>📍 Lugar / Ubicación donde se produjo</span>
+                  <span className="text-[11px] text-slate-400 font-normal lowercase">
+                    (para reuniones presenciales, visitas, ferias o sede)
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={draftLugar}
+                  onChange={(e) => setDraftLugar(e.target.value)}
+                  placeholder="Ej: Sede central Madrid, Restaurante El Olivo, Feria IFEMA Stand 4B..."
+                  className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
+                />
+              </div>
+
               {/* Descripción */}
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase">
@@ -456,23 +478,42 @@ export const InteraccionDetailModal: React.FC<InteraccionDetailModalProps> = ({
       >
         {/* Header */}
         <div className="p-6 bg-amber-600 text-white flex items-start justify-between">
-          <div>
-            <span className="text-xs font-bold text-amber-200 uppercase tracking-widest">
-              {selectedInteraccion.tipo}
-            </span>
-            <h2 className="text-2xl font-bold mt-1 text-slate-50">{selectedInteraccion.asunto}</h2>
-            <div className="flex items-center gap-2 mt-2">
-              <span
-                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                  selectedInteraccion.estado === 'completada'
-                    ? 'bg-emerald-500/20 text-white'
-                    : 'bg-rose-500/20 text-white animate-pulse'
-                }`}
+          <div className="flex-1 mr-4">
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <select
+                value={selectedInteraccion.tipo}
+                onChange={(e) => actualizarInteraccion({ tipo: e.target.value as any })}
+                className="bg-amber-700/60 border border-amber-400 text-white rounded-lg py-1 px-2.5 text-xs font-bold outline-none focus:border-amber-200 cursor-pointer"
               >
-                {selectedInteraccion.estado}
-              </span>
-              <span className="text-xs text-amber-100">Fecha: {selectedInteraccion.fecha}</span>
+                <option value="reunion">🤝 Reunión presencial</option>
+                <option value="videollamada">📹 Videollamada</option>
+                <option value="llamada">📞 Llamada</option>
+                <option value="email">✉️ Email</option>
+                <option value="visita">🚶 Visita presencial</option>
+                <option value="feria">🏢 Feria / Evento</option>
+                <option value="otro">📌 Otro</option>
+              </select>
+              <select
+                value={selectedInteraccion.estado}
+                onChange={(e) => actualizarInteraccion({ estado: e.target.value as any })}
+                className="bg-amber-700/60 border border-amber-400 text-white rounded-lg py-1 px-2.5 text-xs font-bold outline-none focus:border-amber-200 cursor-pointer"
+              >
+                <option value="pendiente">⏳ Pendiente</option>
+                <option value="completada">✅ Completada</option>
+              </select>
+              <input
+                type="date"
+                value={selectedInteraccion.fecha}
+                onChange={(e) => actualizarInteraccion({ fecha: e.target.value })}
+                className="bg-amber-700/60 border border-amber-400 text-white rounded-lg py-0.5 px-2 text-xs font-semibold outline-none focus:border-amber-200"
+              />
+              {selectedInteraccion.lugar && (
+                <span className="text-xs text-amber-100 flex items-center gap-1 bg-amber-700/40 px-2.5 py-0.5 rounded-lg border border-amber-500/30">
+                  📍 {selectedInteraccion.lugar}
+                </span>
+              )}
             </div>
+            <h2 className="text-2xl font-bold mt-1 text-slate-50">{selectedInteraccion.asunto}</h2>
           </div>
           <button
             onClick={handleCloseConGuardado}
@@ -504,6 +545,23 @@ export const InteraccionDetailModal: React.FC<InteraccionDetailModalProps> = ({
 
           {/* Status and description */}
           <div className="space-y-4">
+            {/* Lugar donde se produjo */}
+            <div>
+              <label className="block text-xs font-bold text-slate-500 uppercase flex items-center gap-1.5">
+                <span>📍 Lugar / Ubicación donde se produjo</span>
+                <span className="text-[11px] text-slate-400 font-normal lowercase">
+                  (para reuniones presenciales, visitas, ferias o sede)
+                </span>
+              </label>
+              <input
+                type="text"
+                value={selectedInteraccion.lugar || ''}
+                onChange={(e) => actualizarInteraccion({ lugar: e.target.value })}
+                placeholder="Ej: Sede central Madrid, Restaurante El Olivo, Feria IFEMA Stand 4B..."
+                className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg py-2 px-3 text-sm focus:bg-white focus:border-indigo-500 outline-none transition-all font-medium"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase">
                 Detalle o Minuta de la Interacción

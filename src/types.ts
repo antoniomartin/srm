@@ -109,7 +109,7 @@ export interface Contacto {
   motivoInactivo?: string;
 }
 
-export type InteraccionTipo = 'reunion' | 'llamada' | 'email' | 'feria';
+export type InteraccionTipo = 'reunion' | 'llamada' | 'email' | 'videollamada' | 'feria' | 'visita' | 'otro';
 export type InteraccionEstado = 'pendiente' | 'completada';
 
 export interface PasoInteraccion {
@@ -126,6 +126,7 @@ export interface Interaccion {
   tipo: InteraccionTipo;
   fecha: string; // YYYY-MM-DD
   fechaLimite?: string | null; // YYYY-MM-DD
+  lugar?: string; // Ubicación/Lugar donde se produjo (para presenciales)
   asunto: string;
   descripcion: string;
   estado: InteraccionEstado;

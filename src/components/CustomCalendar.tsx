@@ -154,7 +154,7 @@ export const CustomCalendar: React.FC<CustomCalendarProps> = ({
           id: `${inter.id}-inicio`,
           interaccionId: inter.id!,
           tipo: 'interaccion',
-          titulo: `${inter.tipo === 'reunion' ? '🤝' : inter.tipo === 'llamada' ? '📞' : inter.tipo === 'email' ? '✉️' : '🏢'} ${inter.asunto}`,
+          titulo: `${inter.tipo === 'reunion' ? '🤝' : inter.tipo === 'videollamada' ? '📹' : inter.tipo === 'llamada' ? '📞' : inter.tipo === 'email' ? '✉️' : inter.tipo === 'visita' ? '🚶' : inter.tipo === 'feria' ? '🏢' : '📌'} ${inter.asunto}`,
           subtitulo: inter.descripcion,
           fecha: inter.fecha,
           completado: isCompleted,

@@ -32,6 +32,12 @@ export const InteractionCard: React.FC<InteractionCardProps> = ({
             🤝 Reunión
           </span>
         );
+      case 'videollamada':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200 shadow-2xs">
+            📹 Videollamada
+          </span>
+        );
       case 'llamada':
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
@@ -44,10 +50,22 @@ export const InteractionCard: React.FC<InteractionCardProps> = ({
             ✉️ Correo
           </span>
         );
-      default:
+      case 'visita':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
+            🚶 Visita
+          </span>
+        );
+      case 'feria':
         return (
           <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200 shadow-2xs">
             🏢 Feria / Evento
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs">
+            📌 {interaccion.tipo || 'Interacción'}
           </span>
         );
     }
@@ -114,6 +132,14 @@ export const InteractionCard: React.FC<InteractionCardProps> = ({
             <p className="line-clamp-1 flex items-center justify-between">
               <span className="text-slate-400 font-medium">Empresa:</span>
               <span className="font-semibold text-indigo-600 truncate max-w-[170px]">{empresaNombre}</span>
+            </p>
+          )}
+          {interaccion.lugar && (
+            <p className="line-clamp-1 flex items-center justify-between">
+              <span className="text-slate-400 font-medium">Lugar:</span>
+              <span className="font-semibold text-slate-700 truncate max-w-[170px]" title={interaccion.lugar}>
+                📍 {interaccion.lugar}
+              </span>
             </p>
           )}
         </div>
